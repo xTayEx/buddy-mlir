@@ -8,4 +8,5 @@ def foo(x, y):
 foo_mlir = dynamo.optimize(compiler.DynamoCompiler)(foo)
 in1 = torch.randn(10)
 in2 = torch.randn(10)
-foo_mlir(in1, in2)
+ret = foo_mlir(in1, in2)
+print(ret)

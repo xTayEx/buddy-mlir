@@ -25,7 +25,7 @@
 #include "../kernels.h"
 #include <buddy/DIP/ImageContainer.h>
 #include <iostream>
-#include <opencv2/imgcodecs.hpp>
+#include <opencv4/opencv2/imgcodecs.hpp>
 #include <time.h>
 
 using namespace cv;

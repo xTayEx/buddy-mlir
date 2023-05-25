@@ -13,6 +13,8 @@ endif()
 
 message(STATUS "Spliting size: ${SPLITING_SIZE}")
 
+add_custom_command(OUTPUT conv2d_opt.mlir
+  COMMAND ${BUDDY_BINARY_DIR}/buddy-opt ${BUDDY_EXAMPLES_DIR}/ConvOpt/conv2d.mlir -conv-vectorization="strip-mining=${SPLITING_SIZE}" -lower-affine -convert-scf-to-cf -convert-vector-to-llvm -finalize-memref-to-llvm -llvm-request-c-wrappers -convert-func-to-llvm -reconcile-unrealized-casts > conv2d_opt.mlir)
 
 add_custom_command(OUTPUT conv2d.o
   COMMAND ${BUDDY_BINARY_DIR}/buddy-opt ${BUDDY_EXAMPLES_DIR}/ConvOpt/conv2d.mlir -conv-vectorization="strip-mining=${SPLITING_SIZE}" -lower-affine -convert-scf-to-cf -convert-vector-to-llvm -finalize-memref-to-llvm -llvm-request-c-wrappers -convert-func-to-llvm -reconcile-unrealized-casts | 
@@ -27,6 +29,7 @@ add_custom_command(OUTPUT conv2d.o
 #   DEPENDS buddy-opt)
 
 add_library(Conv2D STATIC conv2d.o)
+add_custom_target(conv2d_opt.mlird DEPENDS conv2d_opt.mlir)
 
 SET_SOURCE_FILES_PROPERTIES(
   template.o
@@ -45,5 +48,6 @@ if(BUDDY_ENABLE_OPENCV)
 endif()
 
 add_executable(edge-detection edge-detection.cpp)
+add_executable(arith_add arith_add.cpp)
 add_dependencies(edge-detection buddy-opt)
 target_link_libraries(edge-detection ${OpenCV_LIBS} Conv2D)

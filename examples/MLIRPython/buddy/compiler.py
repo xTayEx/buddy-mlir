@@ -5,6 +5,7 @@ from mlir.passmanager import *
 import torch
 from typing import List
 import array
+import ctypes
 
 def DynamoCompiler(gm: torch.fx.GraphModule, inputs: List[torch.Tensor]):
   print("Custom Compiler from FX Graph to MLIR:")
@@ -15,8 +16,11 @@ def DynamoCompiler(gm: torch.fx.GraphModule, inputs: List[torch.Tensor]):
   with Location.unknown(ctx):
     module = Importer(gm, inputs)
     module = Lowering(module)
-  return gm.forward
 
+  def ArithAddRunner():
+    lib = ctypes.CDLL('./arith_add.so')
+    # lib._mlir_ciface_generated_func.argtypes
+  return gm.forward
 def Importer(gm: torch.fx.GraphModule, inputs: List[torch.Tensor]):
   # Initialize the symbol table.
   symbolTable = {}
@@ -139,6 +143,7 @@ def Lowering(module: Module):
   pm.add("convert-arith-to-llvm")
   pm.add("expand-strided-metadata")
   pm.add("finalize-memref-to-llvm")
+  pm.add("func.func(llvm-request-c-wrappers)")
   pm.add("convert-func-to-llvm")
   pm.add("reconcile-unrealized-casts")
   pm.run(module.operation)

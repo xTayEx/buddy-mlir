@@ -23,7 +23,7 @@
 
 #include "buddy/Core/Container.h"
 #include <cassert>
-#include <opencv2/opencv.hpp>
+#include <opencv4/opencv2/opencv.hpp>
 
 // Image container.
 // - T represents the type of the elements.
