@@ -9,7 +9,6 @@ int main() {
   if (dlHandle) {
     typedef void (*arithAddSoFuncType)(MemRef<float, 1> *, MemRef<float, 1> *, MemRef<float, 1>*);
     arithAddSoFuncType arithAdd = reinterpret_cast<arithAddSoFuncType>(dlsym(dlHandle, "_mlir_ciface_generated_func"));
-    cout << "I can load the shared library!" << endl;
     float tensorA[3] = {1.0f, 2.0f, 3.0f};
     float tensorB[3] = {3.0f, 10.0f, 1.0f};
     float tensorOut[3] = {0.0f, 0.0f, 0.0f};
