@@ -5,7 +5,23 @@ from mlir.passmanager import *
 import torch
 from typing import List
 import array
-import ctypes
+import PyBuddy
+
+def ArithAddRunner(t1: torch.Tensor, t2: torch.Tensor):
+  t1_list = t1.tolist()
+  t2_list = t2.tolist()
+  ele_count = t1.numel()
+  result_list = [0.0] * ele_count
+  sizes_l = [ele_count]
+  
+  t1_memref = PyBuddy.MemRef1d(t1_list, sizes_l, 0)
+  t2_memref = PyBuddy.MemRef1d(t2_list, sizes_l, 0)
+  result_memref = PyBuddy.MemRef1d(result_list, sizes_l, 0)
+  PyBuddy.arith_add(result_memref, t1_memref, t2_memref)
+  result_list = result_memref.getData()
+  
+  return (torch.Tensor(result_list),)
+
 
 def DynamoCompiler(gm: torch.fx.GraphModule, inputs: List[torch.Tensor]):
   print("Custom Compiler from FX Graph to MLIR:")
@@ -17,10 +33,12 @@ def DynamoCompiler(gm: torch.fx.GraphModule, inputs: List[torch.Tensor]):
     module = Importer(gm, inputs)
     module = Lowering(module)
 
-  def ArithAddRunner():
-    lib = ctypes.CDLL('./arith_add.so')
-    # lib._mlir_ciface_generated_func.argtypes
-  return gm.forward
+  # return ArithAddRunner(t1, t2)
+  # torch.compile
+  # return wrapper
+  return ArithAddRunner
+  # return gm.forward
+
 def Importer(gm: torch.fx.GraphModule, inputs: List[torch.Tensor]):
   # Initialize the symbol table.
   symbolTable = {}
