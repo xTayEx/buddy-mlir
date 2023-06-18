@@ -1,4 +1,4 @@
-from buddy import compiler
+from examples.MLIRPython.buddy import compiler
 import torch
 import torch._dynamo as dynamo
 
