@@ -21,6 +21,7 @@ def GenAddOp(node, symbolTable):
 
   symbolTable[str(node.name)] = op
 
+
 def GenMatmulOp(node, symbolTable):
   # Get two input values.
   input1 = symbolTable.get(str(node._args[0]))
@@ -40,9 +41,9 @@ def GenMatmulOp(node, symbolTable):
     # `arith.constant dense<0.000000e+00> : tensor<3x3xf32>`
     tensorType = RankedTensorType.get(sizes, f32)
     attr = DenseElementsAttr.get_splat(tensorType, zeroElement)
-    initResult = arith.ConstantOp(tensorType, attr)
+    initResult = arith.ConstantOp(tensorType, attr).result
     # Generate matmul operation.
-    op = linalg.matmul(input1, input2, outs=[initResult.result])
+    op = linalg.matmul(input1, input2, outs=[initResult])
     symbolTable[str(node.name)] = op
   elif len(shp1) == 3:
     size0 = shp1[0]
@@ -79,13 +80,6 @@ def GenSubOp(node, symbolTable):
   op = arith.SubFOp(input1, input2)
   symbolTable[str(node.name)] = op
 
-# iadd means in-place add!
-def GenIaddOp(node, symbolTable):
-  input1 = symbolTable.get(str(node._args[0])) 
-  input2 = symbolTable.get(str(node._args[1]))
-  op = arith.AddIOp(input1, input2)
-  symbolTable[str(node.name)] = op
-
 def GenMulOp(node, symbolTable):
   input1 = symbolTable.get(str(node._args[0])) 
   input2 = symbolTable.get(str(node._args[1]))
@@ -114,11 +108,11 @@ def GenOnesOp(node, symbolTable):
 
 OpCodeGen = {
   'add': GenAddOp,
+  'iadd': GenAddOp,
   'matmul': GenMatmulOp,
   'transpose': GenTransposeOp,
   'sub': GenSubOp,
   'mul': GenMulOp,
   'truediv': GenTrueDivOp,
-  'iadd': GenIaddOp,
   'ones': GenOnesOp
 }
