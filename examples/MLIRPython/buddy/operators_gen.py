@@ -75,6 +75,7 @@ def GenSubOp(node, symbolTable):
   op = arith.SubFOp(input1, input2)
   symbolTable[str(node.name)] = op
 
+# iadd means in-place add!
 def GenIaddOp(node, symbolTable):
   input1 = symbolTable.get(str(node._args[0])) 
   input2 = symbolTable.get(str(node._args[1]))

@@ -1,10 +1,12 @@
-from mlir.ir import *
-from mlir.dialects import arith, linalg, tosa
-import mlir.dialects.func as func
-from mlir.passmanager import *
-from .operators_gen import OpCodeGen
-import torch
 from typing import List
+
+import mlir.dialects.func as func
+import torch
+from mlir.ir import *
+from mlir.passmanager import *
+
+from operators_gen import OpCodeGen
+
 
 def DynamoCompiler(gm: torch.fx.GraphModule, inputs: List[torch.Tensor]):
   print("Custom Compiler from FX Graph to MLIR:")
@@ -16,6 +18,7 @@ def DynamoCompiler(gm: torch.fx.GraphModule, inputs: List[torch.Tensor]):
     module = Importer(gm, inputs)
     module = Lowering(module)
   return gm.forward
+
 
 def Importer(gm: torch.fx.GraphModule, inputs: List[torch.Tensor]):
   # Initialize the symbol table.
@@ -30,6 +33,7 @@ def Importer(gm: torch.fx.GraphModule, inputs: List[torch.Tensor]):
       f32 = F32Type.get()
       tensorArg = RankedTensorType.get(shapeList, f32)
       arguments.append(tensorArg)
+
     # Generate the function.
     @func.FuncOp.from_py_func(*arguments)
     def generated_func(*args):
@@ -48,20 +52,22 @@ def Importer(gm: torch.fx.GraphModule, inputs: List[torch.Tensor]):
   print(module)
   return(module)
 
+
 def CodeGen(node, symbolTable, argsList):
-  if node.op == "placeholder" :
+  if node.op == "placeholder":
     # Bind the placeholder with args.
     symbolTable[str(node.name)] = argsList[0]
     argsList.pop(0)
-  if node.op == "call_function" :
+  if node.op == "call_function":
     # Parse a call_function operation.
     opName = node.target.__name__
     OpCodeGen[opName](node, symbolTable)
 
-  if node.op == "output" :
+  if node.op == "output":
     # Generating return operation.
     ret = symbolTable.get(str(node._args[0][0]))
     symbolTable["output"] = ret
+
 
 def Lowering(module: Module):
   print("-------------------------------------------------------------------")

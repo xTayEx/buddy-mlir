@@ -3,6 +3,7 @@ import logging
 import torch
 import torch._dynamo
 import torch._dynamo.config
+import graphviz
 from typing import List
 
 torch._dynamo.config.log_level = logging.INFO
@@ -11,7 +12,22 @@ torch._dynamo.config.output_code = True
 import transformers
 from transformers import PyTorchBenchmark, PyTorchBenchmarkArguments, BertConfig
 
+
+def DrawGraphviz(gm: torch.fx.GraphModule):
+  dot = graphviz.Digraph(format="png")
+  for node in gm.graph.nodes:
+    dot.node(str(id(node)), label=node.name)
+  
+  for node in gm.graph.nodes:
+    for used_node in node._args:
+      if isinstance(used_node, torch.fx.Node):
+        dot.edge(str(id(used_node)), str(id(node)))
+  
+  dot.render("transformer_fx_graph", view=False)
+
+
 def dynamo_debug_backend(gm: torch.fx.GraphModule, example_inputs: List[torch.Tensor]):
+  DrawGraphviz(gm)
   gm.graph.print_tabular()
   op_set = set()
   for node in gm.graph.nodes:
@@ -22,6 +38,7 @@ def dynamo_debug_backend(gm: torch.fx.GraphModule, example_inputs: List[torch.Te
 
   return gm.forward
 
+
 def prepare_inputs(**kwargs):
   vocab_size = kwargs['vocab_size']
   batch_size = kwargs['batch_size']
@@ -30,14 +47,17 @@ def prepare_inputs(**kwargs):
                             dtype=torch.long)
   return input_ids
 
+
 def prepare_train_model(config):
   model = transformers.models.bert.modeling_bert.BertForMaskedLM(config)
   model.train()
   return model
 
+
 def train(model, inps):
   loss = model(inps, labels=inps)[0]
   loss.backward()
+
 
 def timed(fn):
   start = timer.time()
@@ -48,13 +68,14 @@ def timed(fn):
 
 N_ITER = 100
 
+
 def train_bench():
   config_1_lay = BertConfig(num_hidden_layers=1)
 
   args = {
     'vocab_size': 30522,
     'batch_size': 8,
-    'sequence_length':128
+    'sequence_length': 128
   }
     
   inputs = prepare_inputs(**args)
@@ -74,7 +95,7 @@ def train_bench():
   inputs = prepare_inputs(**args)
   model = prepare_train_model(config_1_lay)
   opt = torch.optim.Adam(model.parameters())
-  compiled_train = torch.compile(train, backend=dynamo_debug_backend)
+  compiled_train = torch.compile(train)
 
   # timing dynamo
   dynamo_times = []
@@ -85,6 +106,7 @@ def train_bench():
     dynamo_times.append(time)
     # print(f"dynamo train time {i}: {time}")
   # print('=' * 20)
+
 
 if __name__ == "__main__":
   train_bench()
