@@ -1,4 +1,7 @@
 import array
+import inspect
+
+from loguru import logger
 
 from mlir.ir import (RankedTensorType,
                      F32Type, 
@@ -15,6 +18,7 @@ def GenAddOp(node, symbolTable):
   input1 = symbolTable.get(str(node._args[0])) 
   input2 = symbolTable.get(str(node._args[1]))
   op = arith.AddFOp(input1, input2)
+
   symbolTable[str(node.name)] = op
 
 def GenMatmulOp(node, symbolTable):

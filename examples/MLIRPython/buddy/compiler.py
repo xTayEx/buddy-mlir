@@ -2,10 +2,13 @@ from typing import List
 
 import mlir.dialects.func as func
 import torch
+
+import mlir.ir
 from mlir.ir import *
 from mlir.passmanager import *
+from loguru import logger
 
-from operators_gen import OpCodeGen
+from .operators_gen import OpCodeGen
 
 
 def DynamoCompiler(gm: torch.fx.GraphModule, inputs: List[torch.Tensor]):
@@ -50,7 +53,7 @@ def Importer(gm: torch.fx.GraphModule, inputs: List[torch.Tensor]):
   print("-------------------------------------------------------------------")
   print("Printing the generated MLIR ...")
   print(module)
-  return(module)
+  return module
 
 
 def CodeGen(node, symbolTable, argsList):
