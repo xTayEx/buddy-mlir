@@ -1,18 +1,13 @@
 import array
-import inspect
-
-from loguru import logger
 
 from mlir.ir import (RankedTensorType,
                      F32Type, 
                      DenseElementsAttr, 
-                     FloatAttr,
-                     Value,
-                     Operation)
+                     FloatAttr)
 from mlir.dialects import (arith,
                            linalg,
-                           tosa,
-                           tensor)
+                           tosa)
+
 
 def GenAddOp(node, symbolTable):
   input1 = symbolTable.get(str(node._args[0])) 
@@ -20,6 +15,7 @@ def GenAddOp(node, symbolTable):
   op = arith.AddFOp(input1, input2)
 
   symbolTable[str(node.name)] = op
+
 
 def GenMatmulOp(node, symbolTable):
   # Get two input values.
@@ -40,9 +36,9 @@ def GenMatmulOp(node, symbolTable):
     # `arith.constant dense<0.000000e+00> : tensor<3x3xf32>`
     tensorType = RankedTensorType.get(sizes, f32)
     attr = DenseElementsAttr.get_splat(tensorType, zeroElement)
-    initResult = arith.ConstantOp(tensorType, attr)
+    initResult = arith.ConstantOp(tensorType, attr).result
     # Generate matmul operation.
-    op = linalg.matmul(input1, input2, outs=[initResult.result])
+    op = linalg.matmul(input1, input2, outs=[initResult])
     symbolTable[str(node.name)] = op
   elif len(shp1) == 3:
     size0 = shp1[0]
@@ -56,6 +52,7 @@ def GenMatmulOp(node, symbolTable):
     symbolTable[str(node.name)] = op
   else:
     raise NotImplementedError
+
 
 def GenTransposeOp(node, symbolTable):
   if node.target.__name__ == "transpose":
@@ -73,18 +70,13 @@ def GenTransposeOp(node, symbolTable):
     op = tosa.TransposeOp(transResultTensorType, input_tensor, perm)
     symbolTable[str(node.name)] = op
 
+
 def GenSubOp(node, symbolTable):
   input1 = symbolTable.get(str(node._args[0])) 
   input2 = symbolTable.get(str(node._args[1]))
   op = arith.SubFOp(input1, input2)
   symbolTable[str(node.name)] = op
 
-# iadd means in-place add!
-def GenIaddOp(node, symbolTable):
-  input1 = symbolTable.get(str(node._args[0])) 
-  input2 = symbolTable.get(str(node._args[1]))
-  op = arith.AddIOp(input1, input2)
-  symbolTable[str(node.name)] = op
 
 def GenMulOp(node, symbolTable):
   input1 = symbolTable.get(str(node._args[0])) 
@@ -92,11 +84,13 @@ def GenMulOp(node, symbolTable):
   op = arith.MulFOp(input1, input2)
   symbolTable[str(node.name)] = op
 
+
 def GenTrueDivOp(node, symbolTable):
   input1 = symbolTable.get(str(node._args[0])) 
   input2 = symbolTable.get(str(node._args[1]))
   op = arith.DivFOp(input1, input2)
   symbolTable[str(node.name)] = op
+
 
 def GenOnesOp(node, symbolTable):
   args = node._args
@@ -112,13 +106,14 @@ def GenOnesOp(node, symbolTable):
   op = arith.ConstantOp(allOneTensorType, allOneAttr)
   symbolTable[str(node.name)] = op
 
+
 OpCodeGen = {
   'add': GenAddOp,
+  'iadd': GenAddOp,
   'matmul': GenMatmulOp,
   'transpose': GenTransposeOp,
   'sub': GenSubOp,
   'mul': GenMulOp,
   'truediv': GenTrueDivOp,
-  'iadd': GenIaddOp,
   'ones': GenOnesOp
 }
