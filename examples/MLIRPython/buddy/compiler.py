@@ -5,7 +5,7 @@ import torch
 from mlir.ir import *
 from mlir.passmanager import *
 
-from operators_gen import OpCodeGen
+from .operators_gen import OpCodeGen
 
 
 def DynamoCompiler(gm: torch.fx.GraphModule, inputs: List[torch.Tensor]):
