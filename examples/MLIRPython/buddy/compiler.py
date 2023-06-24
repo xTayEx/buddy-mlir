@@ -77,6 +77,7 @@ def Lowering(module: Module):
   print("Bufferizing the module ...")
   pm = PassManager('builtin.module')
   pm.add("func.func(tosa-to-linalg)")
+  pm.add("func.func(tosa-to-tensor)")
   pm.add("empty-tensor-to-alloc-tensor")
   pm.add("convert-elementwise-to-linalg")
   pm.add("arith-bufferize")

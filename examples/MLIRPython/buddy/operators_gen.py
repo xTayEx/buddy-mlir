@@ -152,6 +152,25 @@ def GenGeluNoEstimateOp(node, symbolTable):
   symbolTable[str(node.name)] = op
 
 
+def GenSoftmaxOp(node, symbolTable):
+  f32 = F32Type.get()
+
+  inputTensor = symbolTable.get(str(node._args[0]))
+  axis = node._args[1]
+
+  inputSize = RankedTensorType(inputTensor.type).shape
+  sumSize = inputSize[:axis] + [1] + inputSize[axis + 1:]
+  sumResultTensorType = RankedTensorType.get(sumSize, f32)
+
+  expOp = tosa.ExpOp(inputTensor.type, inputTensor)
+  sumExpOp = tosa.ReduceSumOp(expOp.result, axis)
+  logSumExpOp = tosa.LogOp(sumResultTensorType, sumExpOp.result)
+  subOp = tosa.SubOp(inputTensor.type, inputTensor, logSumExpOp.result)
+  divOp = tosa.ExpOp(inputTensor.type, subOp.result)
+
+  symbolTable[str(node.name)] = divOp
+
+
 OpCodeGen = {
   'add': GenAddOp,
   'iadd': GenAddOp,
@@ -161,5 +180,6 @@ OpCodeGen = {
   'mul': GenMulOp,
   'truediv': GenTrueDivOp,
   'ones': GenOnesOp,
-  'gelu': GenGeluNoEstimateOp
+  'gelu': GenGeluNoEstimateOp,
+  'softmax': GenSoftmaxOp
 }
