@@ -1,4 +1,5 @@
 import array
+import math as builtin_math
 
 from mlir.ir import (RankedTensorType,
                      F32Type, 
@@ -6,7 +7,17 @@ from mlir.ir import (RankedTensorType,
                      FloatAttr)
 from mlir.dialects import (arith,
                            linalg,
-                           tosa)
+                           tosa,
+                           math)
+
+
+def _getConstantTensorOp(value: float, sizes: list[int]):
+  f32 = F32Type.get()
+  constantTensorType = RankedTensorType.get(sizes, f32)
+  constantElementAttr = FloatAttr.get(f32, value)
+  constantTensorAttr = DenseElementsAttr.get_splat(constantTensorType, constantElementAttr)
+  op = arith.ConstantOp(constantTensorType, constantTensorAttr)
+  return op
 
 
 def GenAddOp(node, symbolTable):
@@ -98,12 +109,46 @@ def GenOnesOp(node, symbolTable):
   while isinstance(args[0], tuple):
     args = args[0]
   sizes = list(args)
-  f32 = F32Type.get()
-  # create the all-one tensor
-  allOneTensorType = RankedTensorType.get(sizes, f32)
-  oneElementAttr = FloatAttr.get(f32, 1.0)
-  allOneAttr = DenseElementsAttr.get_splat(allOneTensorType, oneElementAttr)
-  op = arith.ConstantOp(allOneTensorType, allOneAttr)
+  symbolTable[str(node.name)] = _getConstantTensorOp(1.0, sizes)
+
+
+def GenGeluEstimateOp(node, symbolTable):
+  x = symbolTable.get(str(node._args[0]))
+  shp = RankedTensorType(x.type).shape
+  sizes = list(shp)
+
+  halfConstantOp = _getConstantTensorOp(0.5, sizes)
+  twoOverPiConstantOp = _getConstantTensorOp(2 / builtin_math.pi, sizes)
+  oneConstantOp = _getConstantTensorOp(1.0, sizes)
+  # 0.5 * (1 + tanh(sqrt(2/pi)))
+  leftConstantOp = math.SqrtOp(twoOverPiConstantOp.result)
+  leftConstantOp = math.TanhOp(leftConstantOp.result)
+  leftConstantOp = arith.AddFOp(oneConstantOp.result, leftConstantOp.result)
+  leftConstantOp = arith.MulFOp(halfConstantOp.result, leftConstantOp.result)
+  leftOp = arith.MulFOp(leftConstantOp.result, x)
+
+  magicNumberConstantOp = _getConstantTensorOp(0.044715, sizes)
+  cubexOp = arith.MulFOp(x, x)
+  cubexOp = arith.MulFOp(x, cubexOp.result)
+  rightOp = arith.AddFOp(x, arith.MulFOp(magicNumberConstantOp.result, cubexOp.result))
+  op = arith.MulFOp(leftOp.result, rightOp.result)
+  symbolTable[str(node.name)] = op
+
+
+def GenGeluNoEstimateOp(node, symbolTable):
+  x = symbolTable.get(str(node._args[0]))
+  shp = RankedTensorType(x.type).shape
+  sizes = list(shp)
+
+  halfConstantOp = _getConstantTensorOp(0.5, sizes)
+  sqrtTwoReciprocalConstantOp = _getConstantTensorOp(1 / builtin_math.sqrt(2), sizes)
+  oneConstantOp = _getConstantTensorOp(1.0, sizes)
+  erfOp = math.ErfOp(sqrtTwoReciprocalConstantOp.result)
+  phiOp = arith.MulFOp(
+    halfConstantOp.result,
+    arith.AddFOp(oneConstantOp.result, erfOp.result)
+  )
+  op = arith.MulFOp(x, phiOp.result)
   symbolTable[str(node.name)] = op
 
 
@@ -115,5 +160,6 @@ OpCodeGen = {
   'sub': GenSubOp,
   'mul': GenMulOp,
   'truediv': GenTrueDivOp,
-  'ones': GenOnesOp
+  'ones': GenOnesOp,
+  'gelu': GenGeluNoEstimateOp
 }
