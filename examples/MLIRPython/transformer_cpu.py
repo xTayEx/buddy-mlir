@@ -4,6 +4,7 @@ import torch
 import torch._dynamo
 import torch._dynamo.config
 from typing import List
+import graphviz
 
 torch._dynamo.config.log_level = logging.INFO
 torch._dynamo.config.output_code = True
@@ -11,7 +12,26 @@ torch._dynamo.config.output_code = True
 import transformers
 from transformers import PyTorchBenchmark, PyTorchBenchmarkArguments, BertConfig
 
+def DrawGraphviz(gm: torch.fx.GraphModule):
+  dot = graphviz.Digraph(format="png")
+  for node in gm.graph.nodes:
+    print(node.op)
+    if node.op == "call_function":
+      dot.node(str(id(node)), label=node.name, shape="box")
+    elif node.op == "call_method":
+      dot.node(str(id(node)), label=node.name, shape="parallelogram")
+    else:
+      dot.node(str(id(node)), label=node.name, shape="ellipse")
+  
+  for node in gm.graph.nodes:
+    for used_node in node._args:
+      if isinstance(used_node, torch.fx.Node):
+        dot.edge(str(id(used_node)), str(id(node)))
+  
+  dot.render("transformer_fx_graph", view=False)
+
 def dynamo_debug_backend(gm: torch.fx.GraphModule, example_inputs: List[torch.Tensor]):
+  DrawGraphviz(gm)
   gm.graph.print_tabular()
   op_set = set()
   for node in gm.graph.nodes:
