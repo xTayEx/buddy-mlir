@@ -44,7 +44,11 @@ def Importer(gm: torch.fx.GraphModule, inputs: List[torch.Tensor]):
       argsList = list(args)
       # Traverse the graph and generate IR.
       for node in gm.graph.nodes:
-        CodeGen(node, symbolTable, argsList)
+        if node.op != "output":
+          symbolTable[str(node.name)] = CodeGen(node, symbolTable, argsList)
+        else:
+          symbolTable["output"] = CodeGen(node, symbolTable, argsList)
+
       return symbolTable.get("output")
   print("-------------------------------------------------------------------")
   print("Printing the symbol table ...")
@@ -59,17 +63,17 @@ def Importer(gm: torch.fx.GraphModule, inputs: List[torch.Tensor]):
 def CodeGen(node, symbolTable, argsList):
   if node.op == "placeholder":
     # Bind the placeholder with args.
-    symbolTable[str(node.name)] = argsList[0]
+    placeholderName = argsList[0]
     argsList.pop(0)
+    return placeholderName
   if node.op == "call_function":
     # Parse a call_function operation.
     opName = node.target.__name__
-    OpCodeGen[opName](node, symbolTable)
-
+    return OpCodeGen[opName](node, symbolTable)
   if node.op == "output":
     # Generating return operation.
     ret = symbolTable.get(str(node._args[0][0]))
-    symbolTable["output"] = ret
+    return ret
 
 
 def Lowering(module: Module):
