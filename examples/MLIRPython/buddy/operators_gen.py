@@ -8,8 +8,8 @@ from mlir.ir import (RankedTensorType,
                      FloatAttr,
                      IntegerAttr)
 from mlir.dialects import (arith,
-                           linalg,
                            tosa,
+                           tensor,
                            math)
 
 
@@ -137,6 +137,14 @@ def ReshapeOp(node, symbolTable):
   newShapeContent = memoryview(newShapeContent)
   newShapeAttr = DenseElementsAttr.get(newShapeContent)
   op = tosa.ReshapeOp(input1, newShapeContent)
+  return op
+
+
+# TODO: Not sure about the argument type. May fail to run.
+def GetItemOp(node, symbolTable):
+  inputTensor = symbolTable.get(str(node._args[0]))
+  indices = list(symbolTable.get(str(node._args[1])))
+  op = tensor.ExtractOp(inputTensor, indices)
   return op
 
 
