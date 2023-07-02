@@ -132,11 +132,21 @@ def AmaxOp(node, symbolTable):
 
 def ReshapeOp(node, symbolTable):
   input1 = symbolTable.get(str(node._args[0]))
-  newShape = symbolTable.get(str(node._args[1]))[0]
+  newShape = symbolTable.get(str(node._args[1]))
   newShapeContent = array.array('Q', newShape)
   newShapeContent = memoryview(newShapeContent)
-  newShapeAttr = DenseElementsAttr.get(newShapeContent)
   op = tosa.ReshapeOp(input1, newShapeContent)
+  return op
+
+
+def UnsqueezeOp(node, symbolTable):
+  inputTensor = symbolTable.get(str(node._args[0]))
+  dim = symbolTable.get(str(node._args[1]))
+  sizes = RankedTensorType(inputTensor.type).shape
+  sizes.insert(dim, 1)
+  newShapeContent = array.array('Q', sizes)
+  newShapeContent = memoryview(newShapeContent)
+  op = tosa.ReshapeOp(inputTensor, newShapeContent)
   return op
 
 
