@@ -1,7 +1,8 @@
 import array
 
 import mlir.ir as ir
-from mlir.dialects import arith, tosa, math, linalg
+from mlir.dialects import arith, tosa, math
+import torch
 
 
 def _getConstantTensorOp(value: float, sizes: list[int]):
@@ -142,55 +143,80 @@ def UnsqueezeOp(node, symbol_table):
     return op
 
 
-def VarMeanOp(node, symbol_table):
-    def MeanDimOp(_input_tensor: ir.Value, _dim) -> ir.Operation:
-        reduce_dim_attr = ir.IntegerAttr.get(ir.IntegerType.get_signless(), _dim)
-        reduce_sum_op: ir.Operation = tosa.ReduceSumOp(_input_tensor, reduce_dim_attr)
+def VarMeanOp(node: torch.fx.Node, symbol_table):
+    def MeanDimOp(_input_tensor: ir.Value, _dim, _correction) -> ir.Operation:
+        if isinstance(_dim, int):
+            _dim = [_dim]
 
-        output_size = []
+        # `_input_tensor` is the first tensor we need to reduce
+        reduce_sum_result = _input_tensor
+
+        # reduce along each dimension in `_dim`
+        for _dim_item, _ in enumerate(_dim):
+            reduce_dim_attr = ir.IntegerAttr.get(ir.IntegerType.get_signless(64), _dim_item)
+            reduce_sum_op: ir.Operation = tosa.ReduceSumOp(
+                reduce_sum_result, reduce_dim_attr
+            )
+            # Next reduction is executed based on this time's reduction result
+            reduce_sum_result = reduce_sum_op.results[0]
+
         tensor_shp = ir.RankedTensorType(_input_tensor.type).shape
-        dim_size = tensor_shp[_dim]
-        for i, siz in enumerate(dim_size):
-            if i == _dim:
-                continue
-            output_size.append(siz)
+        dim_size = 1
+        # calculate the total size on all reduction dimensions to get the denominator
+        for _dim_item in _dim:
+            dim_size *= tensor_shp[_dim_item]
 
         denominator_const_op: ir.Operation = tosa.ConstOp(
             ir.DenseElementsAttr.get(memoryview(array.array("f", [dim_size])))
         )
 
-        denominator_const_reshape_op: ir.Operation = tosa.ReshapeOp(
-            denominator_const_op.results[0], memoryview(array.array("i", [1]))
-        )
-
         reciprocal_op: ir.Operation = tosa.ReciprocalOp(
-            denominator_const_reshape_op.results[0].type,
-            denominator_const_reshape_op.results[0],
+            denominator_const_op.results[0].type,
+            denominator_const_op.results[0],
         )
 
         return tosa.MulOp(
             reduce_sum_op.results[0].type,
             reciprocal_op.results[0],
             reduce_sum_op.results[0],
+            ir.IntegerAttr.get(ir.IntegerType.get_signless(32), 0),
         )
 
     def VarDimOp(_input_tensor: ir.Value, _mean_tensor: ir.Value, _dim) -> ir.Operation:
+        if isinstance(_dim, int):
+            _dim = [_dim]
+        # get (\bar{x} - x_i)
         sub_op: ir.Operation = tosa.SubOp(
             _input_tensor.type, _input_tensor, _mean_tensor
         )
+
+        # get (\bar{x} - x_i) ^ 2
         mul_op: ir.Operation = tosa.MulOp(
-            _input_tensor.type, sub_op.results[0], sub_op.results[0]
+            _input_tensor.type,
+            sub_op.results[0],
+            sub_op.results[0],
+            ir.IntegerAttr.get(ir.IntegerType.get_signless(32), 0),
         )
 
-        reduce_dim_attr = ir.IntegerAttr.get(ir.IntegerType.get_signless(), _dim)
-        reduce_sum_op: ir.Operation = tosa.ReduceSumOp(
-            mul_op.results[0], reduce_dim_attr
-        )
+        # the result of `mul_op` is the first tensor we need to reduce
+        reduce_sum_op = mul_op
+        for _dim_item, _ in enumerate(_dim):
+            reduce_dim_attr = ir.IntegerAttr.get(
+                ir.IntegerType.get_signless(64), _dim_item
+            )
+            reduce_sum_op: ir.Operation = tosa.ReduceSumOp(
+                reduce_sum_op.results[0], reduce_dim_attr
+            )
 
         tensor_shp = ir.RankedTensorType(_input_tensor.type).shape
-        dim_size = tensor_shp[_dim]
+        dim_size = 1
+        # calculate the denominator
+        for _dim_item in _dim:
+            dim_size *= tensor_shp[_dim_item]
         biased_denominator_const_op: ir.Operation = tosa.ConstOp(
-            ir.DenseElementsAttr.get(memoryview(array.array("f", [dim_size - 1.0])))
+            ir.DenseElementsAttr.get(
+                memoryview(array.array("f", [dim_size - correction]))
+            )
         )
         reciprocal_op: ir.Operation = tosa.ReciprocalOp(
             biased_denominator_const_op.results[0].type,
@@ -201,26 +227,37 @@ def VarMeanOp(node, symbol_table):
             reduce_sum_op.results[0].type,
             reciprocal_op.results[0],
             reduce_sum_op.results[0],
+            ir.IntegerAttr.get(ir.IntegerType.get_signless(32), 0),
         )
 
-    mean_input_tensor = symbol_table.get(str(node.args[0]))
-    var_input_tensor = symbol_table.get(str(node.args[0]))
-    dim = node.args[1]
-    if dim is None:
-        while True:
-            _mean_op = MeanDimOp(mean_input_tensor, 0)
-            _var_op = VarDimOp(var_input_tensor, _mean_op.results[0], 0)
-            shp = ir.RankedTensorType(_mean_op.result.type).shape
-            if len(shp) == 0:
-                mean_op = _mean_op
-                var_op = _var_op
-                break
-            mean_input_tensor = _mean_op.results[0]
-            var_input_tensor = _var_op.results[0]
+    mean_input_tensor = symbol_table.get((str(node.args[0]), 0))
+    var_input_tensor = symbol_table.get((str(node.args[0]), 0))
 
+    kwargs = node.kwargs
+    keep_dim = kwargs.get("keep_dim", False)
+    correction = kwargs.get("correction", 1.0)
+
+    mean_op = None
+    var_op = None
+    if len(node.args) == 1:
+        calc_dims = range(len(ir.RankedTensorType(mean_input_tensor.type).shape))
     else:
-        mean_op = MeanDimOp(mean_input_tensor, dim[0])
-        var_op = VarDimOp(var_input_tensor, mean_op.results[0], dim[0])
+        calc_dims = node.args[1]
+
+    mean_op = MeanDimOp(mean_input_tensor, calc_dims, correction)
+    var_op = VarDimOp(var_input_tensor, mean_op.results[0], calc_dims)
+    mean_input_tensor = mean_op.results[0]
+    var_input_tensor = var_op.results[0]
+
+    if not keep_dim:
+        result_shp = ir.RankedTensorType(var_op.results[0].type).shape
+        result_shp = [siz for siz in result_shp if siz != 1]
+        var_op = tosa.ReshapeOp(
+            var_op.results[0], memoryview(array.array("i", result_shp))
+        )
+        mean_op = tosa.ReshapeOp(
+            mean_op.results[0], memoryview(array.array("i", result_shp))
+        )
 
     return var_op, mean_op
 
@@ -229,4 +266,4 @@ def VarMeanOp(node, symbol_table):
 # div, embedding, erf, exp, expand, getitem, gt, inductor_lookup_seed
 # inductor_random, inductor_seeds, mul, permute, reshape, rsqrt
 # select, slice, sub, tanh, unsqueeze, var_mean
-operation_func = {"add": AddOp, "var_mean": VarMeanOp}
+operation_func = {"add.Tensor": AddOp, "var_mean.correction": VarMeanOp}

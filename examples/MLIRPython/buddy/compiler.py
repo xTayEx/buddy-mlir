@@ -5,21 +5,25 @@ import mlir.dialects.func as func
 import mlir.ir as ir
 from mlir.passmanager import PassManager
 import torch
+from torch._functorch.aot_autograd import aot_module_simplified
 
 from .operators_gen import operation_func
 
 
 def DynamoCompiler(gm: torch.fx.GraphModule, inputs: List[torch.Tensor]):
-    print("Custom Compiler from FX Graph to MLIR:")
-    print("-------------------------------------------------------------------")
-    gm.graph.print_tabular()
-    # Initialize the MLIR context.
-    ctx = ir.Context()
-    with ir.Location.unknown(ctx):
-        fx_importer = _FXGraphImporter(gm, inputs)
-        module = fx_importer.import_graph()
-        module = Lowering(module)
-    return gm.forward
+    def _compiler(gm: torch.fx.GraphModule, inputs: List[torch.Tensor]):
+        print("Custom Compiler from FX Graph to MLIR:")
+        print("-------------------------------------------------------------------")
+        gm.graph.print_tabular()
+        # Initialize the MLIR context.
+        ctx = ir.Context()
+        with ir.Location.unknown(ctx):
+            fx_importer = _FXGraphImporter(gm, inputs)
+            module = fx_importer.import_graph()
+            module = Lowering(module)
+        return gm.forward
+
+    return aot_module_simplified(gm, inputs, fw_compiler=_compiler)
 
 
 class _FXGraphImporter:
@@ -63,7 +67,7 @@ class _FXGraphImporter:
                         if node.target is operator.getitem:
                             self._symbol_table[
                                 (str(node.name), 0)
-                            ] = self._symbol_table[(node.args[0], node.args[1])]
+                            ] = self._symbol_table[(str(node.args[0]), node.args[1])]
                         else:
                             self._import_op(node)
 
@@ -85,10 +89,10 @@ class _FXGraphImporter:
             node, self._symbol_table
         )
         if isinstance(op_ret, tuple):
-            for i, operation in op_ret:
+            for i, operation in enumerate(op_ret):
                 self._symbol_table[(str(node.name), i)] = operation.result
         else:
-            self._symbol_table[(str(node.name), 0)] = op_ret
+            self._symbol_table[(str(node.name), 0)] = op_ret.result
 
 
 def Lowering(module: ir.Module):
@@ -97,6 +101,7 @@ def Lowering(module: ir.Module):
     pm = PassManager("builtin.module")
     pm.add("func.func(tosa-to-linalg)")
     pm.add("func.func(tosa-to-tensor)")
+    pm.add("func.func(tosa-to-arith)")
     pm.add("empty-tensor-to-alloc-tensor")
     pm.add("convert-elementwise-to-linalg")
     pm.add("arith-bufferize")
