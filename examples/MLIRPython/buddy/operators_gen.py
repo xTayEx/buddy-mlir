@@ -77,4 +77,46 @@ def AddMMOp(node: torch.fx.Node,
   return op
 
 
-operation_func = {"add.Tensor": AddOp, "addmm.default": AddMMOp}
+def bmm_op(node: torch.fx.Node,
+           symbol_table: Dict[Tuple[str, int], ir.Operation]) -> ir.Operation:
+  """Map aten.bmm.default to tosa.matmul
+
+  Args:
+    node: A FX graph containing the tosa.matmul operator and its parameter.
+    symbol_table: The symbol table that records the mapping between symbols and operations.
+
+  Returns:
+    ir.Operation: The generated tosa.matmul operation.
+
+  """
+  input_ = symbol_table.get((str(node.args[0]), 0))
+  mat2 = symbol_table.get((str(node.args[1]), 0))
+  input_shp = ir.RankedTensorType(input_.type).shape
+  mat2_shp = ir.RankedTensorType(mat2.type).shape
+  sizes = [input_shp[0], input_shp[1], mat2_shp[2]]
+  f32 = ir.F32Type.get()
+  result_type = ir.RankedTensorType.get(sizes, f32)
+  op = tosa.MatMulOp(result_type, input_, mat2)
+  return op
+
+
+def expand_op(
+    node: torch.fx.Node, symbol_table: Dict[Tuple[str, int],
+                                            ir.Operation]) -> ir.Operation:
+  to_expand_tensor = symbol_table.get((str(node.args[0]), 0))
+  new_size = node.args[1]
+  f32 = ir.F32Type.get()
+  element = ir.FloatAttr.get(f32, 0.0)
+  new_size_tensor_type = ir.RankedTensorType.get(new_size, f32)
+  new_size_attr = ir.DenseElementsAttr.get_splat(new_size_tensor_type, element)
+  new_size_tensor = tosa.ConstOp(new_size_attr).results[0]
+  op = tosa.AddOp(new_size_tensor_type, new_size_tensor, to_expand_tensor)
+  return op
+
+
+operation_func = {
+    "add.Tensor": AddOp,
+    "addmm.default": AddMMOp,
+    "bmm.default": bmm_op,
+    "expand.default": expand_op
+}
