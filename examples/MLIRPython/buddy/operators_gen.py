@@ -1,4 +1,5 @@
 import array
+from typing import Dict, Tuple
 
 import mlir.ir as ir
 from mlir.dialects import arith, tosa, math
@@ -34,8 +35,24 @@ def AddOp(node, symbol_table):
   broadcasted_shp = _broadcast_shape(input1, input2)
   sizes = broadcasted_shp
   f32 = ir.F32Type.get()
-  addResultTensorType = ir.RankedTensorType.get(sizes, f32)
-  op = tosa.AddOp(addResultTensorType, input1, input2)
+  add_result_tensor_type = ir.RankedTensorType.get(sizes, f32)
+  op = tosa.AddOp(add_result_tensor_type, input1, input2)
+  return op
+
+
+def AddMMOp(node: torch.fx.Node,
+            symbol_table: Dict[Tuple[str, int], ir.Operation]) -> ir.Operation:
+  input_ = symbol_table.get((str(node.args[0]), 0))
+  mat1 = symbol_table.get((str(node.args[1]), 0))
+  mat2 = symbol_table.get((str(node.args[2]), 0))
+  mat1_shp = ir.RankedTensorType.get(mat1).shape
+  mat2_shp = ir.RankedTensorType.get(mat2).shape
+  result_shp = [mat1_shp[0], mat2_shp[1]]
+  f32 = ir.F32Type.get()
+  matmul_result_type = ir.RankedTensorType.get(result_shp, f32)
+  matmul_op = tosa.MatMulOp(matmul_result_type, mat1, mat2)
+  add_result_tensor_type = ir.RankedTensorType.get(result_shp, f32)
+  op = tosa.AddOp(add_result_tensor_type, input_, matmul_op.c)
   return op
 
 
@@ -259,4 +276,8 @@ def VarMeanOp(node: torch.fx.Node, symbol_table):
 # div, embedding, erf, exp, expand, getitem, gt, inductor_lookup_seed
 # inductor_random, inductor_seeds, mul, permute, reshape, rsqrt
 # select, slice, sub, tanh, unsqueeze, var_mean
-operation_func = {"add.Tensor": AddOp, "var_mean.correction": VarMeanOp}
+operation_func = {
+    "add.Tensor": AddOp,
+    "var_mean.correction": VarMeanOp,
+    "addmm.default": AddMMOp
+}
