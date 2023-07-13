@@ -6,13 +6,13 @@ from mlir.dialects import arith, tosa, math
 import torch
 
 
-def _getConstantTensorOp(value: float, sizes: list[int]):
+def _get_constant_tensor_op(value: float, sizes: list[int]):
   f32 = ir.F32Type.get()
-  constantTensorType = ir.RankedTensorType.get(sizes, f32)
-  constantElementAttr = ir.FloatAttr.get(f32, value)
-  constantTensorAttr = ir.DenseElementsAttr.get_splat(constantTensorType,
-                                                      constantElementAttr)
-  op = arith.ConstantOp(constantTensorType, constantTensorAttr)
+  constant_tensor_type = ir.RankedTensorType.get(sizes, f32)
+  constant_element_attr = ir.FloatAttr.get(f32, value)
+  constant_tensor_attr = ir.DenseElementsAttr.get_splat(constant_tensor_type,
+                                                      constant_element_attr)
+  op = arith.ConstantOp(constant_tensor_type, constant_tensor_attr)
   return op
 
 
@@ -29,7 +29,7 @@ def _broadcast_shape(tensor_input1, tensor_input2):
   return shp1
 
 
-def AddOp(node, symbol_table):
+def add_op(node, symbol_table):
   input1 = symbol_table.get((str(node.args[0]), 0))
   input2 = symbol_table.get((str(node.args[1]), 0))
   broadcasted_shp = _broadcast_shape(input1, input2)
@@ -40,8 +40,8 @@ def AddOp(node, symbol_table):
   return op
 
 
-def AddMMOp(node: torch.fx.Node,
-            symbol_table: Dict[Tuple[str, int], ir.Operation]) -> ir.Operation:
+def addmm_op(node: torch.fx.Node,
+              symbol_table: Dict[Tuple[str, int], ir.Operation]) -> ir.Operation:
   input_ = symbol_table.get((str(node.args[0]), 0))
   mat1 = symbol_table.get((str(node.args[1]), 0))
   mat2 = symbol_table.get((str(node.args[2]), 0))
@@ -56,25 +56,25 @@ def AddMMOp(node: torch.fx.Node,
   return op
 
 
-def GtOp(node, symbol_table):
+def gt_op(node, symbol_table):
   input1 = symbol_table.get(str(node.args[0]))
   input2 = symbol_table.get(str(node.args[1]))
   broadcasted_shp = _broadcast_shape(input1, input2)
   sizes = broadcasted_shp
   f32 = ir.F32Type.get()
-  addResultTensorType = ir.RankedTensorType.get(sizes, f32)
-  op = tosa.GreaterOp(addResultTensorType, input1, input2)
+  add_result_tensor_type = ir.RankedTensorType.get(sizes, f32)
+  op = tosa.GreaterOp(add_result_tensor_type, input1, input2)
   return op
 
 
-def SubOp(node, symbol_table):
+def sub_op(node, symbol_table):
   input1 = symbol_table.get(str(node.args[0]))
   input2 = symbol_table.get(str(node.args[1]))
   op = arith.SubFOp(input1, input2)
   return op
 
 
-def MulOp(node, symbol_table):
+def mul_op(node, symbol_table):
   input1 = symbol_table.get(str(node.args[0]))
   input2 = symbol_table.get(str(node.args[1]))
   broadcasted_shp = _broadcast_shape(input1, input2)
@@ -85,7 +85,7 @@ def MulOp(node, symbol_table):
   return op
 
 
-def DivOp(node, symbol_table):
+def div_op(node, symbol_table):
   input1 = symbol_table.get(str(node.args[0]))
   input2 = symbol_table.get(str(node.args[1]))
   broadcasted_shp = _broadcast_shape(input1, input2)
@@ -96,40 +96,40 @@ def DivOp(node, symbol_table):
   return op
 
 
-def ErfOp(node, symbol_table):
+def erf_op(node, symbol_table):
   input_ = symbol_table.get(str(node.args[0]))
-  erfOp = math.ErfOp(input_)
-  return erfOp
+  op = math.ErfOp(input_)
+  return op
 
 
-def TanhOp(node, symbol_table):
+def tanh_op(node, symbol_table):
   input1 = symbol_table.get(str(node.args[0]))
   sizes = ir.RankedTensorType(input1.type).shape
   f32 = ir.F32Type.get()
   tanhResultTensorType = ir.RankedTensorType.get(sizes, f32)
-  tanhOp = tosa.TanhOp(tanhResultTensorType, input1)
-  return tanhOp
+  op = tosa.TanhOp(tanhResultTensorType, input1)
+  return op
 
 
-def ExpOp(node, symbol_table):
+def exp_op(node, symbol_table):
   input1 = symbol_table.get(str(node.args[0]))
   sizes = ir.RankedTensorType(input1.type).shape
   f32 = ir.F32Type.get()
   expResultTensorType = ir.RankedTensorType.get(sizes, f32)
-  expOp = tosa.ExpOp(expResultTensorType, input1)
-  return expOp
+  op = tosa.ExpOp(expResultTensorType, input1)
+  return op
 
 
-def RsqrtOp(node, symbol_table):
+def rsqrt_op(node, symbol_table):
   input1 = symbol_table.get(str(node.args[0]))
   sizes = ir.RankedTensorType(input1.type).shape
   f32 = ir.F32Type.get()
   rsqrtResultTensorType = ir.RankedTensorType.get(sizes, f32)
-  rsqrtOp = tosa.RsqrtOp(rsqrtResultTensorType, input1)
-  return rsqrtOp
+  op = tosa.RsqrtOp(rsqrtResultTensorType, input1)
+  return op
 
 
-def AmaxOp(node, symbol_table):
+def amax_op(node, symbol_table):
   input1 = symbol_table.get(str(node.args[0]))
   dim = symbol_table.get(str(node.args[1]))[0]
   signlessType = ir.IntegerType.get_signless()
@@ -138,16 +138,38 @@ def AmaxOp(node, symbol_table):
   return op
 
 
-def ReshapeOp(node, symbol_table):
+def reshape_op(node, symbol_table):
   input1 = symbol_table.get(str(node.args[0]))
-  newShape = symbol_table.get(str(node.args[1]))
-  newShapeContent = array.array("i", newShape)
-  newShapeContent = memoryview(newShapeContent)
-  op = tosa.ReshapeOp(input1, newShapeContent)
+  new_shape = symbol_table.get(str(node.args[1]))
+  total_size = 1
+  now_shape = ir.RankedTensorType(input1.type).shape
+  for dim_siz in now_shape:
+    total_size *= dim_siz
+
+  neg_one_cnt = 0
+  rest_size = 1
+  for dim_siz in new_shape:
+    if dim_siz == -1:
+      neg_one_cnt += 1
+      continue
+    rest_size *= dim_siz
+
+  if neg_one_cnt != 0:
+    if neg_one_cnt > 1 or total_size % rest_size != 0:
+      raise ValueError("Can not infer the new shape!")
+    infer_dim_size = total_size // rest_size
+    for i, _ in enumerate(new_shape):
+      if new_shape[i] == -1:
+        new_shape[i] = infer_dim_size
+
+  new_shape_content = array.array("i", new_shape)
+  new_shape_content = memoryview(new_shape_content)
+  op = tosa.ReshapeOp(input1, new_shape_content)
+
   return op
 
 
-def UnsqueezeOp(node, symbol_table):
+def unsqueeze_op(node, symbol_table):
   inputTensor = symbol_table.get(str(node.args[0]))
   dim = symbol_table.get(str(node.args[1]))
   sizes = ir.RankedTensorType(inputTensor.type).shape
@@ -159,9 +181,9 @@ def UnsqueezeOp(node, symbol_table):
   return op
 
 
-def VarMeanOp(node: torch.fx.Node, symbol_table):
+def var_mean_op(node: torch.fx.Node, symbol_table):
 
-  def MeanDimOp(_input_tensor: ir.Value, _dim) -> ir.Operation:
+  def mean_dim_op(_input_tensor: ir.Value, _dim) -> ir.Operation:
     if isinstance(_dim, int):
       _dim = [_dim]
 
@@ -198,7 +220,7 @@ def VarMeanOp(node: torch.fx.Node, symbol_table):
         ir.IntegerAttr.get(ir.IntegerType.get_signless(32), 0),
     )
 
-  def VarDimOp(_input_tensor: ir.Value, _mean_tensor: ir.Value, _dim,
+  def var_dim_op(_input_tensor: ir.Value, _mean_tensor: ir.Value, _dim,
                _correction) -> ir.Operation:
     if isinstance(_dim, int):
       _dim = [_dim]
@@ -256,8 +278,8 @@ def VarMeanOp(node: torch.fx.Node, symbol_table):
   else:
     calc_dims = node.args[1]
 
-  mean_op = MeanDimOp(mean_input_tensor, calc_dims)
-  var_op = VarDimOp(var_input_tensor, mean_op.results[0], calc_dims, correction)
+  mean_op = mean_dim_op(mean_input_tensor, calc_dims)
+  var_op = var_dim_op(var_input_tensor, mean_op.results[0], calc_dims, correction)
   mean_input_tensor = mean_op.results[0]
   var_input_tensor = var_op.results[0]
 
@@ -277,7 +299,7 @@ def VarMeanOp(node: torch.fx.Node, symbol_table):
 # inductor_random, inductor_seeds, mul, permute, reshape, rsqrt
 # select, slice, sub, tanh, unsqueeze, var_mean
 operation_func = {
-    "add.Tensor": AddOp,
-    "var_mean.correction": VarMeanOp,
-    "addmm.default": AddMMOp
+    "add.Tensor": add_op,
+    "var_mean.correction": var_mean_op,
+    "addmm.default": addmm_op
 }
