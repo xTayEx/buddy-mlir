@@ -57,8 +57,8 @@ def addmm_op(node: torch.fx.Node,
 
 
 def gt_op(node, symbol_table):
-  input1 = symbol_table.get(str(node.args[0]))
-  input2 = symbol_table.get(str(node.args[1]))
+  input1 = symbol_table.get((str(node.args[0]), 0))
+  input2 = symbol_table.get((str(node.args[1]), 0))
   broadcasted_shp = _broadcast_shape(input1, input2)
   sizes = broadcasted_shp
   f32 = ir.F32Type.get()
@@ -68,15 +68,15 @@ def gt_op(node, symbol_table):
 
 
 def sub_op(node, symbol_table):
-  input1 = symbol_table.get(str(node.args[0]))
-  input2 = symbol_table.get(str(node.args[1]))
+  input1 = symbol_table.get((str(node.args[0]), 0))
+  input2 = symbol_table.get((str(node.args[1]), 0))
   op = arith.SubFOp(input1, input2)
   return op
 
 
 def mul_op(node, symbol_table):
-  input1 = symbol_table.get(str(node.args[0]))
-  input2 = symbol_table.get(str(node.args[1]))
+  input1 = symbol_table.get((str(node.args[0]), 0))
+  input2 = symbol_table.get((str(node.args[1]), 0))
   broadcasted_shp = _broadcast_shape(input1, input2)
   sizes = broadcasted_shp
   f32 = ir.F32Type.get()
@@ -86,8 +86,8 @@ def mul_op(node, symbol_table):
 
 
 def div_op(node, symbol_table):
-  input1 = symbol_table.get(str(node.args[0]))
-  input2 = symbol_table.get(str(node.args[1]))
+  input1 = symbol_table.get((str(node.args[0]), 0))
+  input2 = symbol_table.get((str(node.args[1]), 0))
   broadcasted_shp = _broadcast_shape(input1, input2)
   sizes = broadcasted_shp
   f32 = ir.F32Type.get()
@@ -97,13 +97,13 @@ def div_op(node, symbol_table):
 
 
 def erf_op(node, symbol_table):
-  input_ = symbol_table.get(str(node.args[0]))
+  input_ = symbol_table.get((str(node.args[0]), 0))
   op = math.ErfOp(input_)
   return op
 
 
 def tanh_op(node, symbol_table):
-  input1 = symbol_table.get(str(node.args[0]))
+  input1 = symbol_table.get((str(node.args[0]), 0))
   sizes = ir.RankedTensorType(input1.type).shape
   f32 = ir.F32Type.get()
   tanhResultTensorType = ir.RankedTensorType.get(sizes, f32)
@@ -112,7 +112,7 @@ def tanh_op(node, symbol_table):
 
 
 def exp_op(node, symbol_table):
-  input1 = symbol_table.get(str(node.args[0]))
+  input1 = symbol_table.get((str(node.args[0]), 0))
   sizes = ir.RankedTensorType(input1.type).shape
   f32 = ir.F32Type.get()
   expResultTensorType = ir.RankedTensorType.get(sizes, f32)
@@ -121,7 +121,7 @@ def exp_op(node, symbol_table):
 
 
 def rsqrt_op(node, symbol_table):
-  input1 = symbol_table.get(str(node.args[0]))
+  input1 = symbol_table.get((str(node.args[0]), 0))
   sizes = ir.RankedTensorType(input1.type).shape
   f32 = ir.F32Type.get()
   rsqrt_result_tensor_type = ir.RankedTensorType.get(sizes, f32)
@@ -130,7 +130,7 @@ def rsqrt_op(node, symbol_table):
 
 
 def amax_op(node, symbol_table):
-  input1 = symbol_table.get(str(node.args[0]))
+  input1 = symbol_table.get((str(node.args[0]), 0))
   dim = symbol_table.get(str(node.args[1]))[0]
   signlessType = ir.IntegerType.get_signless()
   dimAttr = ir.IntegerAttr.get(signlessType, dim)
@@ -139,7 +139,7 @@ def amax_op(node, symbol_table):
 
 
 def reshape_op(node, symbol_table):
-  input1 = symbol_table.get(str(node.args[0]))
+  input1 = symbol_table.get((str(node.args[0]), 0))
   new_shape = node.args[1]
   total_size = 1
   now_shape = ir.RankedTensorType(input1.type).shape
@@ -170,7 +170,7 @@ def reshape_op(node, symbol_table):
 
 
 def unsqueeze_op(node, symbol_table):
-  input_tensor = symbol_table.get(str(node.args[0]))
+  input_tensor = symbol_table.get((str(node.args[0]), 0))
   dim = node.args[1]
   sizes = ir.RankedTensorType(input_tensor.type).shape
   sizes.insert(dim, 1)
