@@ -140,7 +140,7 @@ def amax_op(node, symbol_table):
 
 def reshape_op(node, symbol_table):
   input1 = symbol_table.get(str(node.args[0]))
-  new_shape = symbol_table.get(str(node.args[1]))
+  new_shape = node.args[1]
   total_size = 1
   now_shape = ir.RankedTensorType(input1.type).shape
   for dim_siz in now_shape:
@@ -171,7 +171,7 @@ def reshape_op(node, symbol_table):
 
 def unsqueeze_op(node, symbol_table):
   input_tensor = symbol_table.get(str(node.args[0]))
-  dim = symbol_table.get(str(node.args[1]))
+  dim = node.args[1]
   sizes = ir.RankedTensorType(input_tensor.type).shape
   sizes.insert(dim, 1)
   newShapeContent = array.array("i", sizes)
@@ -181,8 +181,22 @@ def unsqueeze_op(node, symbol_table):
   return op
 
 
+def convert_element_type_op(node, symbol_table):
+  # maintain a mapping of torch types and mlir types
+  types_mapping = {
+    torch.float64: ir.F64Type.get(),
+    torch.float32: ir.F32Type.get(),
+    torch.float16: ir.F16Type.get()
+  }
+  input_tensor = symbol_table.get((str(node.args[0]), 0))
+  to_cast_type = types_mapping[node.args[1]]
+  sizes = ir.RankedTensorType(input_tensor.type).shape
+  output_type = ir.RankedTensorType.get(sizes, to_cast_type)
+  return tosa.CastOp(output_type, input_tensor)
+
+
 def clone_op(node, symbol_table):
-  input_tensor = symbol_table.get(str(node.args[0]))
+  input_tensor = symbol_table.get((str(node.args[0]), 0))
   sizes = ir.RankedTensorType(input_tensor.type).shape
   f32 = ir.F32Type.get()
   output_type = ir.RankedTensorType.get(sizes, f32)
@@ -312,5 +326,6 @@ operation_func = {
     "add.Tensor": add_op,
     "var_mean.correction": var_mean_op,
     "addmm.default": addmm_op,
-    "reshape.default": reshape_op
+    "reshape.default": reshape_op,
+    "convert_element_type.default": convert_element_type_op
 }
