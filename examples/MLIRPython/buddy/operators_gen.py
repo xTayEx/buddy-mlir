@@ -174,11 +174,45 @@ def unsqueeze_op(node, symbol_table):
   dim = node.args[1]
   sizes = ir.RankedTensorType(input_tensor.type).shape
   sizes.insert(dim, 1)
-  newShapeContent = array.array("i", sizes)
-  newShapeContent = memoryview(newShapeContent)
-  newShapeAttr = ir.DenseElementsAttr.get(newShapeContent)
-  op = tosa.ReshapeOp(input_tensor, newShapeAttr)
+  new_shape_content = array.array("i", sizes)
+  new_shape_content = memoryview(new_shape_content)
+  new_shape_attr = ir.DenseElementsAttr.get(new_shape_content)
+  op = tosa.ReshapeOp(input_tensor, new_shape_attr)
   return op
+
+
+def select_op(node, symbol_table):
+  input_tensor = symbol_table.get((str(node.args[0]), 0))
+  dim = node.args[1]
+  index = node.args[2]
+
+  sizes = ir.RankedTensorType(input_tensor.type).shape
+  new_sizes = sizes[:dim - 1] + [1] + sizes[dim + 1:]
+  start = [0] * len(sizes)
+  start[dim] = index
+  
+  new_sizes_content = array.array("i", new_sizes)
+  new_sizes_content = memoryview(new_sizes_content)
+  new_sizes_attr = ir.DenseElementsAttr.get(new_sizes_content)
+
+  start_content = array.array("i", start)
+  start_content = memoryview(start_content)
+  start_attr = ir.DenseElementsAttr.get(start_content)
+
+  f32 = ir.F32Type.get()
+  output_type = ir.RankedTensorType.get(new_sizes, f32)
+  op = tosa.SliceOp(output_type, input_tensor, start_attr, new_sizes_attr)
+
+  reshape_sizes = sizes[:dim - 1] + sizes[dim + 1:]
+  reshape_sizes_content = array.array("i", reshape_sizes)
+  reshape_sizes_content = memoryview(new_sizes_content)
+  op = tosa.ReshapeOp(op.results[0], reshape_sizes_content)
+  
+  return op
+
+
+def slice_op(node, symbol_table):
+  pass
 
 
 def convert_element_type_op(node, symbol_table):
