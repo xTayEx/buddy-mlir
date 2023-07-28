@@ -187,25 +187,21 @@ def select_op(node, symbol_table):
   index = node.args[2]
 
   sizes = ir.RankedTensorType(input_tensor.type).shape
-  new_sizes = sizes[:dim - 1] + [1] + sizes[dim + 1:]
+
+  new_sizes = sizes[:dim] + [1] + sizes[dim + 1:]
+  new_sizes_attr = ir._denseI64ArrayAttr(new_sizes, None)
+
   start = [0] * len(sizes)
   start[dim] = index
-  
-  new_sizes_content = array.array("i", new_sizes)
-  new_sizes_content = memoryview(new_sizes_content)
-  new_sizes_attr = ir.DenseElementsAttr.get(new_sizes_content)
-
-  start_content = array.array("i", start)
-  start_content = memoryview(start_content)
-  start_attr = ir.DenseElementsAttr.get(start_content)
+  start_attr = ir._denseI64ArrayAttr(start, None)
 
   f32 = ir.F32Type.get()
   output_type = ir.RankedTensorType.get(new_sizes, f32)
   op = tosa.SliceOp(output_type, input_tensor, start_attr, new_sizes_attr)
 
-  reshape_sizes = sizes[:dim - 1] + sizes[dim + 1:]
-  reshape_sizes_content = array.array("i", reshape_sizes)
-  reshape_sizes_content = memoryview(new_sizes_content)
+  reshape_sizes = sizes[:dim] + sizes[dim + 1:]
+  reshape_sizes_content = array.array("Q", reshape_sizes)
+  reshape_sizes_content = memoryview(reshape_sizes_content)
   op = tosa.ReshapeOp(op.results[0], reshape_sizes_content)
   
   return op
@@ -361,5 +357,6 @@ operation_func = {
     "var_mean.correction": var_mean_op,
     "addmm.default": addmm_op,
     "reshape.default": reshape_op,
+    "select.int": select_op,
     "convert_element_type.default": convert_element_type_op
 }
