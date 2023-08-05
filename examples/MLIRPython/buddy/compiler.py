@@ -47,8 +47,15 @@ class _FXGraphImporter:
       arguments = []
       for arg in self._inputs:
         shape_list = list(arg.shape)
-        f32 = ir.F32Type.get()
-        tensor_arg = ir.RankedTensorType.get(shape_list, f32)
+        dtype = arg.dtype
+        if dtype is torch.int32:
+          mlir_dtype = ir.IntegerType.get_signless(32)
+        elif dtype is torch.float32:
+          mlir_dtype = ir.F32Type.get()
+        else:
+          raise NotImplementedError(
+              f"Unsupported dtype {dtype} for argument {arg}")
+        tensor_arg = ir.RankedTensorType.get(shape_list, mlir_dtype)
         arguments.append(tensor_arg)
 
       @func.FuncOp.from_py_func(*arguments, name=self._func_name)
