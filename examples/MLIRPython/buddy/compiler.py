@@ -80,13 +80,14 @@ class FXGraphImporter:
       for arg in self._inputs:
         shape_list = list(arg.shape)
         dtype = arg.dtype
-        if dtype is torch.int32:
-          mlir_dtype = ir.IntegerType.get_signless(32)
-        elif dtype is torch.float32:
-          mlir_dtype = ir.F32Type.get()
-        else:
-          raise NotImplementedError(
-              f"Unsupported dtype {dtype} for argument {arg}")
+        match dtype:
+          case torch.int32:
+            mlir_dtype = ir.IntegerType.get_signless(32)
+          case torch.float32:
+            mlir_dtype = ir.F32Type.get()
+          case _:
+            raise NotImplementedError(
+                f"Unsupported dtype {dtype} for argument {arg}")
         tensor_arg = ir.RankedTensorType.get(shape_list, mlir_dtype)
         arguments.append(tensor_arg)
 
@@ -107,7 +108,7 @@ class FXGraphImporter:
           else:
             if node.target is operator.getitem:
               self._symbol_table[(str(node.name),
-                                  0)] = self._symbol_table[(str(node.args[0]),
+                                  0)] = self._symbol_table[(node.args[0],
                                                             node.args[1])]
             else:
               self._import_op(node)
@@ -129,7 +130,7 @@ class FXGraphImporter:
     op_ret: Union[ir.Operation,
                   tuple] = operation_func[op_name](node, self._symbol_table)
     if isinstance(op_ret, tuple):
-      for i, operation in enumerate(op_ret):
+      for i, operation in op_ret:
         self._symbol_table[(str(node.name), i)] = operation.result
     else:
       self._symbol_table[(str(node.name), 0)] = op_ret.result
