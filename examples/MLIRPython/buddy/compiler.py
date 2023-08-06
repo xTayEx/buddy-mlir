@@ -1,25 +1,43 @@
+"""The buddy compiler backend for torch dynamo.
+"""
 import operator
-from typing import List, Union
+from typing import List, Union, Callable
 
-import mlir.dialects.func as func
-import mlir.ir as ir
-from mlir.passmanager import PassManager
 import torch
 from torch._functorch.aot_autograd import aot_module_simplified
+import mlir.ir as ir
+import mlir.dialects.func as func
+from mlir.passmanager import PassManager
 
 from .operators_gen import operation_func
 
 
-def DynamoCompiler(gm: torch.fx.GraphModule, inputs: List[torch.Tensor]):
+def DynamoCompiler(gm: torch.fx.GraphModule,
+                   inputs: List[torch.Tensor]) -> Callable:
+  """The main entry point of buddy compiler for torch dynamo. It takes a FX
+  graph module and a list of inputs as parameters. The compiler will first use
+  PyTorch's AOT autograd to lower FX graph in Torch IR to Aten/Prims IR. Then
+  it will map the operators in Aten/Prims IR to MLIR operations and generate an
+  MLIR module. Finally, It will lower the MLIR module to LLVM dialect.
+
+  Args:
+    gm (torch.fx.GraphModule): The FX graph module to be compiled.
+    inputs (List[torch.Tensor]): The inputs of the FX graph module.
+
+  Returns:
+    Callable: A compiled function that equivalent to the FX graph.
+
+  """
 
   def _compiler(gm: torch.fx.GraphModule, inputs: List[torch.Tensor]):
+    """Compile a FX graph in Aten/Prims IR to MLIR."""
     print("Custom Compiler from FX Graph to MLIR:")
     print("-------------------------------------------------------------------")
     gm.graph.print_tabular()
     # Initialize the MLIR context.
     ctx = ir.Context()
     with ir.Location.unknown(ctx):
-      fx_importer = _FXGraphImporter(gm, inputs)
+      fx_importer = FXGraphImporter(gm, inputs)
       module = fx_importer.import_graph()
       module = Lowering(module)
     return gm.forward
@@ -27,7 +45,8 @@ def DynamoCompiler(gm: torch.fx.GraphModule, inputs: List[torch.Tensor]):
   return aot_module_simplified(gm, inputs, fw_compiler=_compiler)
 
 
-class _FXGraphImporter:
+class FXGraphImporter:
+  """The FX graph importer class."""
 
   def __init__(
       self,
@@ -35,6 +54,13 @@ class _FXGraphImporter:
       inputs: List[torch.Tensor],
       func_name: str = "main",
   ):
+    """
+    Args:
+      gm (torch.fx.GraphModule): The FX graph module that will be imported.
+      inputs (List[torch.Tensor]): Input tensor(s) of the FX graph.
+      func_name (str): Name of the generated MLIR func.
+
+    """
     self._symbol_table = {}
     self._gm = gm
     self._func_name = func_name
@@ -42,7 +68,13 @@ class _FXGraphImporter:
     self._num_input_visited = 0
     self._module = ir.Module.create()
 
-  def import_graph(self):
+  def import_graph(self) -> ir.Module:
+    """Import the FX graph, generate an MLIR module in high-level dialects.
+
+    Returns:
+      mlir.ir.Module: An MLIR module in high-level dialects.
+
+    """
     with ir.InsertionPoint(self._module.body):
       arguments = []
       for arg in self._inputs:
@@ -82,7 +114,7 @@ class _FXGraphImporter:
 
         return self._symbol_table.get(("output", 0))
 
-    print("Printing the generated MLIR")
+    print("Printing the generated MLIR...")
     print(self._module)
     return self._module
 
@@ -104,6 +136,15 @@ class _FXGraphImporter:
 
 
 def Lowering(module: ir.Module):
+  """Lower an MLIR module to LLVM dialect.
+
+  Args:
+    module (mlir.ir.Module): An MLIR module that need to be lowered.
+
+  Returns:
+    mlir.ir.Module: An MLIR module in LLVM dialect.
+
+  """
   print("-------------------------------------------------------------------")
   print("Bufferizing the module ...")
   pm = PassManager("builtin.module")
