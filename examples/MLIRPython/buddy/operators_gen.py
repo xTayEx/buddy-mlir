@@ -203,7 +203,7 @@ def select_op(node, symbol_table):
   reshape_sizes_content = array.array("Q", reshape_sizes)
   reshape_sizes_content = memoryview(reshape_sizes_content)
   op = tosa.ReshapeOp(op.results[0], reshape_sizes_content)
-  
+
   return op
 
 
@@ -212,7 +212,7 @@ def slice_op(node, symbol_table):
   dim = node.args[1]
   start_idx = node.args[2]
   end_idx = node.args[3]
-  
+
   sizes = ir.RankedTensorType(input_tensor.type).shape
 
   if start_idx < 0:
@@ -234,7 +234,7 @@ def slice_op(node, symbol_table):
   new_sizes = [x for x in sizes]
   new_sizes[dim] = end_idx - start_idx
   new_sizes_attr = ir._denseI64ArrayAttr(new_sizes, None)
-  
+
   offsets = [0] * len(sizes)
   offsets[dim] = start_idx
   offsets_attr = ir._denseI64ArrayAttr(offsets, None)
@@ -244,12 +244,8 @@ def slice_op(node, symbol_table):
 
   f32 = ir.F32Type.get()
   extract_slice_result_type = ir.RankedTensorType.get(new_sizes, f32)
-  op = tensor.ExtractSliceOp(extract_slice_result_type, 
-                             input_tensor,
-                             [], [], [],
-                             offsets_attr,
-                             new_sizes_attr,
-                             strides_attr)
+  op = tensor.ExtractSliceOp(extract_slice_result_type, input_tensor, [], [],
+                             [], offsets_attr, new_sizes_attr, strides_attr)
 
   return op
 
@@ -257,9 +253,9 @@ def slice_op(node, symbol_table):
 def convert_element_type_op(node, symbol_table):
   # maintain a mapping of torch types and mlir types
   types_mapping = {
-    torch.float64: ir.F64Type.get(),
-    torch.float32: ir.F32Type.get(),
-    torch.float16: ir.F16Type.get()
+      torch.float64: ir.F64Type.get(),
+      torch.float32: ir.F32Type.get(),
+      torch.float16: ir.F16Type.get()
   }
   input_tensor = symbol_table.get((str(node.args[0]), 0))
   to_cast_type = types_mapping[node.args[1]]
@@ -277,7 +273,7 @@ def clone_op(node, symbol_table):
   return tosa.IdentityOp(output_type, input_tensor)
 
 
-def var_mean_op(node: torch.fx.Node, symbol_table):
+def var_mean_op(node, symbol_table):
 
   def mean_dim_op(_input_tensor: ir.Value, _dim) -> ir.Operation:
     if isinstance(_dim, int):
@@ -391,6 +387,41 @@ def var_mean_op(node: torch.fx.Node, symbol_table):
   return var_op, mean_op
 
 
+def embedding_op(node, symbol_table):
+  indices = symbol_table.get((str(node.args[1]), 0))
+  weight = symbol_table.get((str(node.args[0]), 0))
+  padding_idx = None if len(node.args) < 3 else node.args[2]
+
+  indices_size = ir.RankedTensorType(indices.type).shape
+  weight_size = ir.RankedTensorType(weight.type).shape
+  f32 = ir.F32Type.get()
+  assert len(indices_size) == 2
+
+  if indices_size[0] != 1:
+    total_size = 1
+    for x in indices_size:
+      total_size *= x
+    indices_reshape_op = tosa.ReshapeOp(
+        indices, memoryview(array.array("i", [1, total_size])))
+    indices = indices_reshape_op.result
+    gather_result_type = ir.RankedTensorType.get(
+        [1, total_size, weight_size[1]], f32)
+  else:
+    gather_result_type = ir.RankedTensorType.get(
+        [*indices_size, weight_size[1]], f32)
+
+  weight_reshape_op = tosa.ReshapeOp(
+      weight, memoryview(array.array("i", [1, *weight_size])))
+
+  gather_op = tosa.GatherOp(gather_result_type, weight_reshape_op.result,
+                            indices)
+  op = tosa.ReshapeOp(
+      gather_op.output,
+      memoryview(array.array("i", [*indices_size, weight_size[1]])))
+
+  return op
+
+
 # add, addmm, amax, bmm, clone, convert_element_type
 # div, embedding, erf, exp, expand, getitem, gt, inductor_lookup_seed
 # inductor_random, inductor_seeds, mul, permute, reshape, rsqrt
@@ -402,5 +433,6 @@ operation_func = {
     "reshape.default": reshape_op,
     "select.int": select_op,
     "slice.Tensor": slice_op,
+    "embedding.default": embedding_op,
     "convert_element_type.default": convert_element_type_op
 }
