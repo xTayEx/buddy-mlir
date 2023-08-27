@@ -387,6 +387,23 @@ def var_mean_op(node, symbol_table):
   return var_op, mean_op
 
 
+def permute_op(node, symbol_table):
+  input_tensor = symbol_table.get((str(node.args[0]), 0))
+  perm = node.args[1]
+  perm_const_op = tosa.ConstOp(
+      ir.DenseElementsAttr.get(memoryview(array.array("i", perm))))
+  result_element_type = ir.RankedTensorType(input_tensor.type).element_type
+  init_shape = ir.RankedTensorType(input_tensor.type).shape
+  new_shape = []
+  for perm_item in perm:
+    new_shape.append(init_shape[perm_item])
+
+  permute_result_type = ir.RankedTensorType.get(new_shape, result_element_type)
+  permute_op = tosa.TransposeOp(permute_result_type, input_tensor,
+                                perm_const_op.results[0])
+  return permute_op
+
+
 def embedding_op(node, symbol_table):
   indices = symbol_table.get((str(node.args[1]), 0))
   weight = symbol_table.get((str(node.args[0]), 0))
@@ -434,5 +451,6 @@ operation_func = {
     "select.int": select_op,
     "slice.Tensor": slice_op,
     "embedding.default": embedding_op,
-    "convert_element_type.default": convert_element_type_op
+    "convert_element_type.default": convert_element_type_op,
+    "permute.default": permute_op
 }
