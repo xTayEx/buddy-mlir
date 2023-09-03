@@ -83,6 +83,8 @@ class FXGraphImporter:
         match dtype:
           case torch.int32:
             mlir_dtype = ir.IntegerType.get_signless(32)
+          case torch.int64:
+            mlir_dtype = ir.IntegerType.get_signless(64)
           case torch.float32:
             mlir_dtype = ir.F32Type.get()
           case _:
