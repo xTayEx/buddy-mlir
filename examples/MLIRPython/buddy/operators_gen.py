@@ -2,18 +2,8 @@ import array
 from typing import Dict, Tuple
 
 import mlir.ir as ir
-from mlir.dialects import arith, tosa, math, tensor
+from mlir.dialects import tosa, math, tensor
 import torch
-
-
-def _get_constant_tensor_op(value: float, sizes: list[int]):
-  f32 = ir.F32Type.get()
-  constant_tensor_type = ir.RankedTensorType.get(sizes, f32)
-  constant_element_attr = ir.FloatAttr.get(f32, value)
-  constant_tensor_attr = ir.DenseElementsAttr.get_splat(constant_tensor_type,
-                                                        constant_element_attr)
-  op = arith.ConstantOp(constant_tensor_type, constant_tensor_attr)
-  return op
 
 
 def _broadcast_shape(tensor_input1, tensor_input2):
@@ -34,25 +24,54 @@ def add_op(node, symbol_table):
   input2 = symbol_table.get((str(node.args[1]), 0))
   broadcasted_shp = _broadcast_shape(input1, input2)
   sizes = broadcasted_shp
-  f32 = ir.F32Type.get()
-  add_result_tensor_type = ir.RankedTensorType.get(sizes, f32)
+  result_element_type = ir.RankedTensorType(input1.type).element_type
+  add_result_tensor_type = ir.RankedTensorType.get(sizes, result_element_type)
   op = tosa.AddOp(add_result_tensor_type, input1, input2)
   return op
 
 
 def addmm_op(node: torch.fx.Node,
              symbol_table: Dict[Tuple[str, int], ir.Operation]) -> ir.Operation:
+  # get input
   input_ = symbol_table.get((str(node.args[0]), 0))
   mat1 = symbol_table.get((str(node.args[1]), 0))
   mat2 = symbol_table.get((str(node.args[2]), 0))
-  mat1_shp = ir.RankedTensorType.get(mat1).shape
-  mat2_shp = ir.RankedTensorType.get(mat2).shape
-  result_shp = [mat1_shp[0], mat2_shp[1]]
-  f32 = ir.F32Type.get()
-  matmul_result_type = ir.RankedTensorType.get(result_shp, f32)
-  matmul_op = tosa.MatMulOp(matmul_result_type, mat1, mat2)
-  add_result_tensor_type = ir.RankedTensorType.get(result_shp, f32)
-  op = tosa.AddOp(add_result_tensor_type, input_, matmul_op.c)
+  # get input shape
+  mat1_shp = ir.RankedTensorType(mat1.type).shape
+  mat2_shp = ir.RankedTensorType(mat2.type).shape
+  # append index because tosa.MatMulOp doesn't accept 2D tensor
+  mat1_reshape_op = tosa.ReshapeOp(mat1,
+                                   memoryview(array.array("i", [1, *mat1_shp])))
+  mat2_reshape_op = tosa.ReshapeOp(mat2,
+                                   memoryview(array.array("i", [1, *mat2_shp])))
+  # do matmul
+  result_element_type = ir.RankedTensorType(mat1.type).element_type
+  matmul_result_shp = [1, mat1_shp[0], mat2_shp[1]]
+  matmul_result_type = ir.RankedTensorType.get(matmul_result_shp,
+                                               result_element_type)
+  matmul_op = tosa.MatMulOp(matmul_result_type, mat1_reshape_op.result,
+                            mat2_reshape_op.result)
+  # restore the shape
+  final_result_shape = [mat1_shp[0], mat2_shp[1]]
+  matmul_result_reshape_op = tosa.ReshapeOp(
+      matmul_op.c, memoryview(array.array("i", final_result_shape)))
+  add_result_tensor_type = ir.RankedTensorType.get(final_result_shape,
+                                                   result_element_type)
+  op = tosa.AddOp(add_result_tensor_type, input_,
+                  matmul_result_reshape_op.result)
+  return op
+
+
+def bmm_op(node: torch.fx.Node,
+           symbol_table: Dict[Tuple[str, int], ir.Operation]) -> ir.Operation:
+  input_ = symbol_table.get((str(node.args[0]), 0))
+  mat2 = symbol_table.get((str(node.args[1]), 0))
+  input_shp = ir.RankedTensorType(input_.type).shape
+  mat2_shp = ir.RankedTensorType(mat2.type).shape
+  sizes = [input_shp[0], input_shp[1], mat2_shp[2]]
+  result_element_type = ir.RankedTensorType(input_.type).element_type
+  result_type = ir.RankedTensorType.get(sizes, result_element_type)
+  op = tosa.MatMulOp(result_type, input_, mat2)
   return op
 
 
@@ -61,8 +80,8 @@ def gt_op(node, symbol_table):
   input2 = symbol_table.get((str(node.args[1]), 0))
   broadcasted_shp = _broadcast_shape(input1, input2)
   sizes = broadcasted_shp
-  f32 = ir.F32Type.get()
-  add_result_tensor_type = ir.RankedTensorType.get(sizes, f32)
+  result_element_type = ir.RankedTensorType(input1.type).element_type
+  add_result_tensor_type = ir.RankedTensorType.get(sizes, result_element_type)
   op = tosa.GreaterOp(add_result_tensor_type, input1, input2)
   return op
 
@@ -70,7 +89,11 @@ def gt_op(node, symbol_table):
 def sub_op(node, symbol_table):
   input1 = symbol_table.get((str(node.args[0]), 0))
   input2 = symbol_table.get((str(node.args[1]), 0))
-  op = arith.SubFOp(input1, input2)
+  broadcasted_shp = _broadcast_shape(input1, input2)
+  sizes = broadcasted_shp
+  result_element_type = ir.RankedTensorType(input1.type).element_type
+  sub_result_tensor_type = ir.RankedTensorType.get(sizes, result_element_type)
+  op = tosa.SubOp(sub_result_tensor_type, input1, input2)
   return op
 
 
@@ -79,9 +102,10 @@ def mul_op(node, symbol_table):
   input2 = symbol_table.get((str(node.args[1]), 0))
   broadcasted_shp = _broadcast_shape(input1, input2)
   sizes = broadcasted_shp
-  f32 = ir.F32Type.get()
-  addResultTensorType = ir.RankedTensorType.get(sizes, f32)
-  op = tosa.MulOp(addResultTensorType, input1, input2)
+  result_element_type = ir.RankedTensorType(input1.type).element_type
+  mul_result_tensor_type = ir.RankedTensorType.get(sizes, result_element_type)
+  op = tosa.MulOp(mul_result_tensor_type, input1, input2,
+                  ir.IntegerAttr.get(ir.IntegerType.get_signless(32), 0))
   return op
 
 
@@ -90,9 +114,9 @@ def div_op(node, symbol_table):
   input2 = symbol_table.get((str(node.args[1]), 0))
   broadcasted_shp = _broadcast_shape(input1, input2)
   sizes = broadcasted_shp
-  f32 = ir.F32Type.get()
-  divResultTensorType = ir.RankedTensorType.get(sizes, f32)
-  op = tosa.DivOp(divResultTensorType, input1, input2)
+  result_element_type = ir.RankedTensorType(input1.type).element_type
+  div_result_tensor_type = ir.RankedTensorType.get(sizes, result_element_type)
+  op = tosa.DivOp(div_result_tensor_type, input1, input2)
   return op
 
 
@@ -105,8 +129,8 @@ def erf_op(node, symbol_table):
 def tanh_op(node, symbol_table):
   input1 = symbol_table.get((str(node.args[0]), 0))
   sizes = ir.RankedTensorType(input1.type).shape
-  f32 = ir.F32Type.get()
-  tanhResultTensorType = ir.RankedTensorType.get(sizes, f32)
+  result_element_type = ir.RankedTensorType(input1.type).element_type
+  tanhResultTensorType = ir.RankedTensorType.get(sizes, result_element_type)
   op = tosa.TanhOp(tanhResultTensorType, input1)
   return op
 
@@ -114,8 +138,8 @@ def tanh_op(node, symbol_table):
 def exp_op(node, symbol_table):
   input1 = symbol_table.get((str(node.args[0]), 0))
   sizes = ir.RankedTensorType(input1.type).shape
-  f32 = ir.F32Type.get()
-  expResultTensorType = ir.RankedTensorType.get(sizes, f32)
+  result_element_type = ir.RankedTensorType(input1.type).element_type
+  expResultTensorType = ir.RankedTensorType.get(sizes, result_element_type)
   op = tosa.ExpOp(expResultTensorType, input1)
   return op
 
@@ -123,8 +147,8 @@ def exp_op(node, symbol_table):
 def rsqrt_op(node, symbol_table):
   input1 = symbol_table.get((str(node.args[0]), 0))
   sizes = ir.RankedTensorType(input1.type).shape
-  f32 = ir.F32Type.get()
-  rsqrt_result_tensor_type = ir.RankedTensorType.get(sizes, f32)
+  result_element_type = ir.RankedTensorType(input1.type).element_type
+  rsqrt_result_tensor_type = ir.RankedTensorType.get(sizes, result_element_type)
   op = tosa.RsqrtOp(rsqrt_result_tensor_type, input1)
   return op
 
@@ -132,9 +156,9 @@ def rsqrt_op(node, symbol_table):
 def amax_op(node, symbol_table):
   input1 = symbol_table.get((str(node.args[0]), 0))
   dim = symbol_table.get(str(node.args[1]))[0]
-  signlessType = ir.IntegerType.get_signless()
-  dimAttr = ir.IntegerAttr.get(signlessType, dim)
-  op = tosa.ReduceMaxOp(input1, dimAttr)
+  signless_type = ir.IntegerType.get_signless()
+  dim_attr = ir.IntegerAttr.get(signless_type, dim)
+  op = tosa.ReduceMaxOp(input1, dim_attr)
   return op
 
 
@@ -176,8 +200,8 @@ def unsqueeze_op(node, symbol_table):
   sizes.insert(dim, 1)
   new_shape_content = array.array("i", sizes)
   new_shape_content = memoryview(new_shape_content)
-  new_shape_attr = ir.DenseElementsAttr.get(new_shape_content)
-  op = tosa.ReshapeOp(input_tensor, new_shape_attr)
+  # new_shape_attr = ir.DenseElementsAttr.get(new_shape_content)
+  op = tosa.ReshapeOp(input_tensor, new_shape_content)
   return op
 
 
@@ -195,8 +219,8 @@ def select_op(node, symbol_table):
   start[dim] = index
   start_attr = ir._denseI64ArrayAttr(start, None)
 
-  f32 = ir.F32Type.get()
-  output_type = ir.RankedTensorType.get(new_sizes, f32)
+  result_element_type = ir.RankedTensorType(input_tensor.type).element_type
+  output_type = ir.RankedTensorType.get(new_sizes, result_element_type)
   op = tosa.SliceOp(output_type, input_tensor, start_attr, new_sizes_attr)
 
   reshape_sizes = sizes[:dim] + sizes[dim + 1:]
@@ -242,8 +266,9 @@ def slice_op(node, symbol_table):
   strides = [1] * len(sizes)
   strides_attr = ir._denseI64ArrayAttr(strides, None)
 
-  f32 = ir.F32Type.get()
-  extract_slice_result_type = ir.RankedTensorType.get(new_sizes, f32)
+  result_element_type = ir.RankedTensorType(input_tensor.type).element_type
+  extract_slice_result_type = ir.RankedTensorType.get(new_sizes,
+                                                      result_element_type)
   op = tensor.ExtractSliceOp(extract_slice_result_type, input_tensor, [], [],
                              [], offsets_attr, new_sizes_attr, strides_attr)
 
@@ -267,8 +292,8 @@ def convert_element_type_op(node, symbol_table):
 def clone_op(node, symbol_table):
   input_tensor = symbol_table.get((str(node.args[0]), 0))
   sizes = ir.RankedTensorType(input_tensor.type).shape
-  f32 = ir.F32Type.get()
-  output_type = ir.RankedTensorType.get(sizes, f32)
+  result_element_type = ir.RankedTensorType(input_tensor.type).element_type
+  output_type = ir.RankedTensorType.get(sizes, result_element_type)
 
   return tosa.IdentityOp(output_type, input_tensor)
 
@@ -411,7 +436,7 @@ def embedding_op(node, symbol_table):
 
   indices_size = ir.RankedTensorType(indices.type).shape
   weight_size = ir.RankedTensorType(weight.type).shape
-  f32 = ir.F32Type.get()
+  result_element_type = ir.RankedTensorType(weight.type).element_type
   assert len(indices_size) == 2
 
   if indices_size[0] != 1:
@@ -422,10 +447,10 @@ def embedding_op(node, symbol_table):
         indices, memoryview(array.array("i", [1, total_size])))
     indices = indices_reshape_op.result
     gather_result_type = ir.RankedTensorType.get(
-        [1, total_size, weight_size[1]], f32)
+        [1, total_size, weight_size[1]], result_element_type)
   else:
     gather_result_type = ir.RankedTensorType.get(
-        [*indices_size, weight_size[1]], f32)
+        [*indices_size, weight_size[1]], result_element_type)
 
   weight_reshape_op = tosa.ReshapeOp(
       weight, memoryview(array.array("i", [1, *weight_size])))
@@ -439,12 +464,37 @@ def embedding_op(node, symbol_table):
   return op
 
 
+def expand_op(
+    node: torch.fx.Node, symbol_table: Dict[Tuple[str, int],
+                                            ir.Operation]) -> ir.Operation:
+  to_expand_tensor = symbol_table.get((str(node.args[0]), 0))
+  new_size = node.args[1]
+  result_element_type = ir.RankedTensorType(to_expand_tensor.type).element_type
+  element = ir.FloatAttr.get(result_element_type, 0.0)
+  new_size_tensor_type = ir.RankedTensorType.get(new_size, result_element_type)
+  new_size_attr = ir.DenseElementsAttr.get_splat(new_size_tensor_type, element)
+  new_size_tensor = tosa.ConstOp(new_size_attr).results[0]
+  op = tosa.AddOp(new_size_tensor_type, new_size_tensor, to_expand_tensor)
+  return op
+
+
 # add, addmm, amax, bmm, clone, convert_element_type
 # div, embedding, erf, exp, expand, getitem, gt, inductor_lookup_seed
 # inductor_random, inductor_seeds, mul, permute, reshape, rsqrt
 # select, slice, sub, tanh, unsqueeze, var_mean
 operation_func = {
     "add.Tensor": add_op,
+    "mul.Tensor": mul_op,
+    "sub.Tensor": sub_op,
+    "tanh.default": tanh_op,
+    "amax.default": amax_op,
+    "rsqrt.default": rsqrt_op,
+    "bmm.default": bmm_op,
+    "clone.default": clone_op,
+    "div.Tensor": div_op,
+    "erf.default": erf_op,
+    "exp.default": exp_op,
+    "expand.default": expand_op,
     "var_mean.correction": var_mean_op,
     "addmm.default": addmm_op,
     "reshape.default": reshape_op,

@@ -3,7 +3,7 @@ import torch
 import torch._dynamo as dynamo
 
 def foo(x, y):
-  return torch.matmul(x, y)
+  return torch.ops.aten.bmm(x, y)
 
 foo_mlir = dynamo.optimize(compiler.DynamoCompiler)(foo)
 in1 = torch.randn(2, 2, 3)
