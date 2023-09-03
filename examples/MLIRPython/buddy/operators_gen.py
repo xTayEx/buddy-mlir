@@ -502,5 +502,6 @@ operation_func = {
     "slice.Tensor": slice_op,
     "embedding.default": embedding_op,
     "convert_element_type.default": convert_element_type_op,
-    "permute.default": permute_op
+    "permute.default": permute_op,
+    "unsqueeze.default": unsqueeze_op,
 }
