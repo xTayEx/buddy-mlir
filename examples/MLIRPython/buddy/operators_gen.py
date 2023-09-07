@@ -478,6 +478,23 @@ def expand_op(
   return op
 
 
+def sum_op(node, symbol_table):
+  input_tensor = symbol_table.get((str(node.args[0]), 0))
+  reduce_sum_dims = node.args[1]
+  dim_cnt = len(ir.RankedTensorType(input_tensor.type).shape)
+  reduce_sum_dims = [
+      dim if dim >= 0 else dim_cnt + dim for dim in reduce_sum_dims
+  ]
+  _reduce_sum_input_tensor = input_tensor
+  reduce_sum_op = None
+  for dim in reduce_sum_dims:
+    reduce_dim_attr = ir.IntegerAttr.get(ir.IntegerType.get_signless(64), dim)
+    reduce_sum_op = tosa.ReduceSumOp(_reduce_sum_input_tensor, reduce_dim_attr)
+    _reduce_sum_input_tensor = reduce_sum_op.results[0]
+
+  return reduce_sum_op
+
+
 # add, addmm, amax, bmm, clone, convert_element_type
 # div, embedding, erf, exp, expand, getitem, gt, inductor_lookup_seed
 # inductor_random, inductor_seeds, mul, permute, reshape, rsqrt
@@ -486,6 +503,7 @@ operation_func = {
     "add.Tensor": add_op,
     "mul.Tensor": mul_op,
     "sub.Tensor": sub_op,
+    "sum.dim_IntList": sum_op,
     "tanh.default": tanh_op,
     "amax.default": amax_op,
     "rsqrt.default": rsqrt_op,
