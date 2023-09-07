@@ -21,11 +21,21 @@ def _broadcast_shape(tensor_input1, tensor_input2):
 
 def add_op(node, symbol_table):
   input1 = symbol_table.get((str(node.args[0]), 0))
-  input2 = symbol_table.get((str(node.args[1]), 0))
+  if isinstance(node.args[1], int) or isinstance(node.args[1], float):
+    input1_shape = ir.RankedTensorType(input1.type).shape
+    input1_element_type = ir.RankedTensorType(input1.type).element_type
+    element = ir.FloatAttr.get(input1_element_type, node.args[1]) if isinstance(
+        node.args[1], float) else ir.IntegerAttr.get(input1_element_type,
+                                                     node.args[1])
+    input2_attr = ir.DenseElementsAttr.get_splat(
+        ir.RankedTensorType.get(input1_shape, input1_element_type), element)
+    input2 = tosa.ConstOp(input2_attr).results[0]
+  else:
+    input2 = symbol_table.get((str(node.args[1]), 0))
   broadcasted_shp = _broadcast_shape(input1, input2)
-  sizes = broadcasted_shp
   result_element_type = ir.RankedTensorType(input1.type).element_type
-  add_result_tensor_type = ir.RankedTensorType.get(sizes, result_element_type)
+  add_result_tensor_type = ir.RankedTensorType.get(broadcasted_shp,
+                                                   result_element_type)
   op = tosa.AddOp(add_result_tensor_type, input1, input2)
   return op
 
@@ -99,7 +109,17 @@ def sub_op(node, symbol_table):
 
 def mul_op(node, symbol_table):
   input1 = symbol_table.get((str(node.args[0]), 0))
-  input2 = symbol_table.get((str(node.args[1]), 0))
+  if isinstance(node.args[1], int) or isinstance(node.args[1], float):
+    input1_shape = ir.RankedTensorType(input1.type).shape
+    input1_element_type = ir.RankedTensorType(input1.type).element_type
+    element = ir.FloatAttr.get(input1_element_type, node.args[1]) if isinstance(
+        node.args[1], float) else ir.IntegerAttr.get(input1_element_type,
+                                                     node.args[1])
+    input2_attr = ir.DenseElementsAttr.get_splat(
+        ir.RankedTensorType.get(input1_shape, input1_element_type), element)
+    input2 = tosa.ConstOp(input2_attr).results[0]
+  else:
+    input2 = symbol_table.get((str(node.args[1]), 0))
   broadcasted_shp = _broadcast_shape(input1, input2)
   sizes = broadcasted_shp
   result_element_type = ir.RankedTensorType(input1.type).element_type
@@ -495,6 +515,10 @@ def sum_op(node, symbol_table):
   return reduce_sum_op
 
 
+def view_op(node, symbol_table):
+  pass
+
+
 # add, addmm, amax, bmm, clone, convert_element_type
 # div, embedding, erf, exp, expand, getitem, gt, inductor_lookup_seed
 # inductor_random, inductor_seeds, mul, permute, reshape, rsqrt
@@ -516,6 +540,7 @@ operation_func = {
     "var_mean.correction": var_mean_op,
     "addmm.default": addmm_op,
     "reshape.default": reshape_op,
+    "view.default": reshape_op,
     "select.int": select_op,
     "slice.Tensor": slice_op,
     "embedding.default": embedding_op,

@@ -8,6 +8,7 @@ from torch._functorch.aot_autograd import aot_module_simplified
 import mlir.ir as ir
 import mlir.dialects.func as func
 from mlir.passmanager import PassManager
+from torch._inductor.decomposition import decompositions as inductor_decomp
 
 from .operators_gen import operation_func
 
@@ -42,7 +43,7 @@ def DynamoCompiler(gm: torch.fx.GraphModule,
       module = Lowering(module)
     return gm.forward
 
-  return aot_module_simplified(gm, inputs, fw_compiler=_compiler)
+  return aot_module_simplified(gm, inputs, fw_compiler=_compiler, decompositions=inductor_decomp.copy())
 
 
 class FXGraphImporter:
