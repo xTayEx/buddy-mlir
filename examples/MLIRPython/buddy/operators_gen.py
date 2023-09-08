@@ -1,5 +1,5 @@
 import array
-from typing import Dict, Tuple
+from typing import Dict, List, Union, Tuple
 
 import mlir.ir as ir
 from mlir.dialects import tosa, math, tensor
@@ -19,19 +19,48 @@ def _broadcast_shape(tensor_input1, tensor_input2):
   return shp1
 
 
-def add_op(node, symbol_table):
-  input1 = symbol_table.get((str(node.args[0]), 0))
-  if isinstance(node.args[1], int) or isinstance(node.args[1], float):
-    input1_shape = ir.RankedTensorType(input1.type).shape
-    input1_element_type = ir.RankedTensorType(input1.type).element_type
-    element = ir.FloatAttr.get(input1_element_type, node.args[1]) if isinstance(
-        node.args[1], float) else ir.IntegerAttr.get(input1_element_type,
-                                                     node.args[1])
-    input2_attr = ir.DenseElementsAttr.get_splat(
-        ir.RankedTensorType.get(input1_shape, input1_element_type), element)
-    input2 = tosa.ConstOp(input2_attr).results[0]
+def _scalar_to_tensor(scalar: Union[float, int], element_type: ir.Type,
+                      shape: List[int]):
+  element = ir.FloatAttr.get(element_type, float(scalar)) if str(
+      element_type) == "f32" else ir.IntegerAttr.get(element_type, int(scalar))
+  attr = ir.DenseElementsAttr.get_splat(
+      ir.RankedTensorType.get(shape, element_type), element)
+  return tosa.ConstOp(attr).results[0]
+
+
+def _normalize_binomial_operator_args(arg1, arg2):
+  if isinstance(arg1, ir.Value) and (isinstance(arg2, float) or
+                                     isinstance(arg2, int)):
+    arg2 = _scalar_to_tensor(arg2,
+                             ir.RankedTensorType(arg1.type).element_type,
+                             ir.RankedTensorType(arg1.type).shape)
+    return arg1, arg2
+  elif isinstance(arg2, ir.Value) and (isinstance(arg1, float) or
+                                       isinstance(arg1, int)):
+    arg1 = _scalar_to_tensor(arg1,
+                             ir.RankedTensorType(arg2.type).element_type,
+                             ir.RankedTensorType(arg2.type).shape)
+    return arg1, arg2
+  elif isinstance(arg1, ir.Value) and isinstance(arg2, ir.Value):
+    return arg1, arg2
+  elif (isinstance(arg1, float) or isinstance(arg1, int)) and (isinstance(
+      arg2, float) or isinstance(arg2, int)):
+    if isinstance(arg1, float) or isinstance(arg2, float):
+      arg1 = _scalar_to_tensor(arg1, ir.F32Type.get(), [1])
+      arg2 = _scalar_to_tensor(arg2, ir.F32Type.get(), [1])
+    else:
+      arg1 = _scalar_to_tensor(arg1, ir.IntegerType.get_signless(32), [1])
+      arg2 = _scalar_to_tensor(arg2, ir.IntegerType.get_signless(32), [1])
+    return arg1, arg2
   else:
-    input2 = symbol_table.get((str(node.args[1]), 0))
+    raise ValueError("Invalid input types %s and %s" % (type(arg1), type(arg2)))
+
+
+def add_op(node, symbol_table):
+  input1 = symbol_table.get((str(node.args[0]), 0), node.args[0])
+  input2 = symbol_table.get((str(node.args[1]), 0), node.args[1])
+  print(input1, input2)
+  input1, input2 = _normalize_binomial_operator_args(input1, input2)
   broadcasted_shp = _broadcast_shape(input1, input2)
   result_element_type = ir.RankedTensorType(input1.type).element_type
   add_result_tensor_type = ir.RankedTensorType.get(broadcasted_shp,
@@ -97,8 +126,9 @@ def gt_op(node, symbol_table):
 
 
 def sub_op(node, symbol_table):
-  input1 = symbol_table.get((str(node.args[0]), 0))
-  input2 = symbol_table.get((str(node.args[1]), 0))
+  input1 = symbol_table.get((str(node.args[0]), 0), node.args[0])
+  input2 = symbol_table.get((str(node.args[1]), 0), node.args[1])
+  input1, input2 = _normalize_binomial_operator_args(input1, input2)
   broadcasted_shp = _broadcast_shape(input1, input2)
   sizes = broadcasted_shp
   result_element_type = ir.RankedTensorType(input1.type).element_type
@@ -108,18 +138,9 @@ def sub_op(node, symbol_table):
 
 
 def mul_op(node, symbol_table):
-  input1 = symbol_table.get((str(node.args[0]), 0))
-  if isinstance(node.args[1], int) or isinstance(node.args[1], float):
-    input1_shape = ir.RankedTensorType(input1.type).shape
-    input1_element_type = ir.RankedTensorType(input1.type).element_type
-    element = ir.FloatAttr.get(input1_element_type, node.args[1]) if isinstance(
-        node.args[1], float) else ir.IntegerAttr.get(input1_element_type,
-                                                     node.args[1])
-    input2_attr = ir.DenseElementsAttr.get_splat(
-        ir.RankedTensorType.get(input1_shape, input1_element_type), element)
-    input2 = tosa.ConstOp(input2_attr).results[0]
-  else:
-    input2 = symbol_table.get((str(node.args[1]), 0))
+  input1 = symbol_table.get((str(node.args[0]), 0), node.args[0])
+  input2 = symbol_table.get((str(node.args[1]), 0), node.args[1])
+  input1, input2 = _normalize_binomial_operator_args(input1, input2)
   broadcasted_shp = _broadcast_shape(input1, input2)
   sizes = broadcasted_shp
   result_element_type = ir.RankedTensorType(input1.type).element_type
@@ -130,8 +151,9 @@ def mul_op(node, symbol_table):
 
 
 def div_op(node, symbol_table):
-  input1 = symbol_table.get((str(node.args[0]), 0))
-  input2 = symbol_table.get((str(node.args[1]), 0))
+  input1 = symbol_table.get((str(node.args[0]), 0), node.args[0])
+  input2 = symbol_table.get((str(node.args[1]), 0), node.args[1])
+  input1, input2 = _normalize_binomial_operator_args(input1, input2)
   broadcasted_shp = _broadcast_shape(input1, input2)
   sizes = broadcasted_shp
   result_element_type = ir.RankedTensorType(input1.type).element_type
@@ -175,9 +197,11 @@ def rsqrt_op(node, symbol_table):
 
 def amax_op(node, symbol_table):
   input1 = symbol_table.get((str(node.args[0]), 0))
-  dim = symbol_table.get(str(node.args[1]))[0]
-  signless_type = ir.IntegerType.get_signless()
-  dim_attr = ir.IntegerAttr.get(signless_type, dim)
+  dim_val = node.args[1][0]
+  if dim_val < 0:
+    dim_val += len(ir.RankedTensorType(input1.type).shape)
+  signless_type = ir.IntegerType.get_signless(32)
+  dim_attr = ir.IntegerAttr.get(signless_type, dim_val)
   op = tosa.ReduceMaxOp(input1, dim_attr)
   return op
 
@@ -244,7 +268,7 @@ def select_op(node, symbol_table):
   op = tosa.SliceOp(output_type, input_tensor, start_attr, new_sizes_attr)
 
   reshape_sizes = sizes[:dim] + sizes[dim + 1:]
-  reshape_sizes_content = array.array("Q", reshape_sizes)
+  reshape_sizes_content = array.array("i", reshape_sizes)
   reshape_sizes_content = memoryview(reshape_sizes_content)
   op = tosa.ReshapeOp(op.results[0], reshape_sizes_content)
 
