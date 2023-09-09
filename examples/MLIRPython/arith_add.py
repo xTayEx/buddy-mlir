@@ -9,5 +9,5 @@ def foo(x, y):
 
 foo_mlir = dynamo.optimize(DynamoCompiler)(foo)
 in1 = torch.randn(10)
-in2 = torch.randn(10)
+in2 = torch.randn((2, 10))
 foo_mlir(in1, in2)

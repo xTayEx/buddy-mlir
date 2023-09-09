@@ -4,6 +4,7 @@ import operator
 from typing import List, Union, Callable
 
 import torch
+from torch.fx.passes.graph_drawer import FxGraphDrawer
 from torch._functorch.aot_autograd import aot_module_simplified
 import mlir.ir as ir
 import mlir.dialects.func as func
@@ -98,7 +99,6 @@ class FXGraphImporter:
       def generated_func(*args):
         args_list = list(args)
         for node in self._gm.graph.nodes:
-          print(str(node.name))
           if node.op == "output":
             output_node_args = node.args[0]
             returns = []
