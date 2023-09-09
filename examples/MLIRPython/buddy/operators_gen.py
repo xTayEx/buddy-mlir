@@ -158,7 +158,9 @@ def div_op(node, symbol_table):
   sizes = broadcasted_shp
   result_element_type = ir.RankedTensorType(input1.type).element_type
   div_result_tensor_type = ir.RankedTensorType.get(sizes, result_element_type)
-  op = tosa.DivOp(div_result_tensor_type, input1, input2)
+  reciprocal_op = tosa.ReciprocalOp(div_result_tensor_type, input2)
+  op = tosa.MulOp(div_result_tensor_type, input1, reciprocal_op.result,
+                  ir.IntegerAttr.get(ir.IntegerType.get_signless(32), 0))
   return op
 
 
@@ -496,6 +498,13 @@ def embedding_op(node, symbol_table):
     gather_result_type = ir.RankedTensorType.get(
         [*indices_size, weight_size[1]], result_element_type)
 
+  # tosa.gather doesn't support i64, so we need to cast it to i32
+  if str(ir.RankedTensorType(indices.type).element_type) != "i32":
+    indices = tosa.CastOp(
+        ir.RankedTensorType.get(
+            ir.RankedTensorType(indices.type).shape,
+            ir.IntegerType.get_signless(32)), indices)
+
   weight_reshape_op = tosa.ReshapeOp(
       weight, memoryview(array.array("i", [1, *weight_size])))
 
@@ -537,10 +546,6 @@ def sum_op(node, symbol_table):
     _reduce_sum_input_tensor = reduce_sum_op.results[0]
 
   return reduce_sum_op
-
-
-def view_op(node, symbol_table):
-  pass
 
 
 # add, addmm, amax, bmm, clone, convert_element_type
