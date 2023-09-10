@@ -8,6 +8,7 @@ def foo(x, y):
 
 
 foo_mlir = dynamo.optimize(DynamoCompiler)(foo)
-in1 = torch.randn(10)
-in2 = torch.randn((2, 10))
-foo_mlir(in1, in2)
+in1 = torch.tensor([1, 2, 3])
+in2 = torch.tensor([4, 5, 6])
+result = foo_mlir(in1, in2)
+print(result)

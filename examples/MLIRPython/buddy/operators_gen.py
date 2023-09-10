@@ -6,20 +6,6 @@ from mlir.dialects import tosa, math, tensor
 import torch
 
 
-def _get_result_broadcast_shape(tensor_input1, tensor_input2):
-  shp1 = ir.RankedTensorType(tensor_input1.type).shape
-  shp2 = ir.RankedTensorType(tensor_input2.type).shape
-  if len(shp1) < len(shp2):
-    shp1, shp2 = shp2, shp1
-  while len(shp2) < len(shp1):
-    shp2.insert(0, 1)
-  result_shp = []
-  for dim1, dim2 in zip(shp1, shp2):
-    result_shp.append(max(dim1, dim2))
-
-  return result_shp
-
-
 def _normalize_binary_operator_shape(shp1, shp2):
   shp1 = list(shp1)
   shp2 = list(shp2)
@@ -33,13 +19,16 @@ def _normalize_binary_operator_shape(shp1, shp2):
 
 def _gen_arith_binary_op(input1, input2, op_func):
   input1, input2 = _normalize_binary_operator_args(input1, input2)
-  broadcasted_result_shp = _get_result_broadcast_shape(input1, input2)
 
   input1_shape = ir.RankedTensorType(input1.type).shape
   input2_shape = ir.RankedTensorType(input2.type).shape
 
   norm_input1_shape, norm_input2_shape = _normalize_binary_operator_shape(
       input1_shape, input2_shape)
+
+  broadcasted_result_shp = []
+  for dim1, dim2 in zip(norm_input1_shape, norm_input2_shape):
+    broadcasted_result_shp.append(max(dim1, dim2))
   if input1_shape != norm_input1_shape:
     input1 = tosa.ReshapeOp(input1,
                             memoryview(array.array("i",
@@ -173,39 +162,13 @@ def div_op(node, symbol_table):
 
   def _inner_op(result_type, input1, input2):
     return tosa.MulOp(result_type, input1,
-                      tosa.ReciprocalOp(result_type, input2).result,
+                      tosa.ReciprocalOp(input2.type, input2).result,
                       ir.IntegerAttr.get(ir.IntegerType.get_signless(32), 0))
 
   input1 = symbol_table.get((str(node.args[0]), 0), node.args[0])
   input2 = symbol_table.get((str(node.args[1]), 0), node.args[1])
 
   return _gen_arith_binary_op(input1, input2, _inner_op)
-
-
-# def div_op(node, symbol_table):
-#   input1 = symbol_table.get((str(node.args[0]), 0), node.args[0])
-#   input2 = symbol_table.get((str(node.args[1]), 0), node.args[1])
-#   input1, input2 = _normalize_binary_operator_args(input1, input2)
-#   broadcasted_shp = _get_result_broadcast_shape(input1, input2)
-#   input1_shape = ir.RankedTensorType(input1.type).shape
-#   input2_shape = ir.RankedTensorType(input2.type).shape
-#   if input1_shape != broadcasted_shp:
-#     input1 = tosa.ReshapeOp(input1,
-#                             memoryview(array.array("i",
-#                                                    broadcasted_shp))).result
-
-#   if input2_shape != broadcasted_shp:
-#     input2 = tosa.ReshapeOp(input2,
-#                             memoryview(array.array("i",
-#                                                    broadcasted_shp))).result
-
-#   result_element_type = ir.RankedTensorType(input1.type).element_type
-#   div_result_tensor_type = ir.RankedTensorType.get(broadcasted_shp,
-#                                                    result_element_type)
-#   reciprocal_op = tosa.ReciprocalOp(div_result_tensor_type, input2)
-#   op = tosa.MulOp(div_result_tensor_type, input1, reciprocal_op.result,
-#                   ir.IntegerAttr.get(ir.IntegerType.get_signless(32), 0))
-#   return op
 
 
 def erf_op(node, symbol_table):
