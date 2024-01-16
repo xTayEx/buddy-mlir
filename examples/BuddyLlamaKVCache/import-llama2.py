@@ -19,37 +19,28 @@
 # ===---------------------------------------------------------------------------
 
 import os
+import time
 
 import numpy
 import torch
-from pathlib import Path
 from transformers import LlamaForCausalLM, LlamaTokenizer
 from torch._functorch.aot_autograd import aot_autograd_decompositions
 
 from buddy.compiler.frontend import DynamoCompiler
 from buddy.compiler.ops import tosa
-from .model import Transformer
 
 
 # Retrieve the LLaMA model path from environment variables.
-model_path_env = os.environ.get("LLAMA_MODEL_PATH")
-if model_path_env is None:
+model_path = os.environ.get("LLAMA_MODEL_PATH")
+if model_path is None:
     raise EnvironmentError(
         "The environment variable 'LLAMA_MODEL_PATH' is not set or is invalid."
     )
 
-model_path = Path(model_path_env)
-
 # Initialize the tokenizer and model from the specified model path.
-model = Transformer.from_name(str(model_path))
-checkpoint = torch.load(str(model_path / "model.pth"), mmap=True, weights_only=True)
-model.load_state_dict(checkpoint, assign=True)
-model = model.to("cuda")
-model = model.eval()
-print(model)
-
-# model = LlamaForCausalLM.from_pretrained(model_path, torchscript=True)
-# model.config.use_cache = False
+tokenizer = LlamaTokenizer.from_pretrained(model_path)
+model = LlamaForCausalLM.from_pretrained(model_path, torchscript=True)
+model.config.use_cache = True
 
 # Initialize Dynamo Compiler with specific configurations as an importer.
 dynamo_compiler = DynamoCompiler(

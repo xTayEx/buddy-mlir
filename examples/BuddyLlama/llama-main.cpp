@@ -18,12 +18,10 @@
 #include <buddy/LLM/TextContainer.h>
 #include <chrono>
 #include <cstddef>
-#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <limits>
-#include <type_traits>
+#include <variant>
 
 using namespace buddy;
 
@@ -33,8 +31,9 @@ constexpr size_t MaxTokenLength = 40;
 constexpr size_t HiddenSize = 4096;
 
 /// Declare LLaMA forward function.
-extern "C" void _mlir_ciface_forward(MemRef<float, 3> *, MemRef<float, 1> *,
-                                     Text<size_t, 2> *);
+extern "C" void
+_mlir_ciface_forward(std::variant<MemRef<float, 3>, MemRef<float, 4>> *,
+                     MemRef<float, 1> *, Text<size_t, 2> *);
 
 // -----------------------------------------------------------------------------
 // Helper Functions
@@ -54,8 +53,8 @@ void printLogLabel() { std::cout << "\033[34;1m[Log] \033[0m"; }
 /// Print information for each iteration.
 void printIterInfo(size_t iterIdx, std::string str, double time) {
   std::cout << "\033[32;1m[Iteration " << iterIdx << "] \033[0m";
-  std::cout << "Token: " << str << " | " << "Time: " << time << "s"
-            << std::endl;
+  std::cout << "Token: " << str << " | "
+            << "Time: " << time << "s" << std::endl;
 }
 
 /// Tokenize input data in the container.
@@ -130,8 +129,96 @@ int main() {
   //  - Output container.
   //  - Parameters container.
   Text<size_t, 2> outputContainer;
-  MemRef<float, 3> resultContainer[2] = {
+  /*
+   tensor<1x40x32000xf32>, tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>,
+   tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>,
+   tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>,
+   tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>,
+   tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>,
+   tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>,
+   tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>,
+   tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>,
+   tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>,
+   tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>,
+   tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>,
+   tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>,
+   tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>,
+   tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>,
+   tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>,
+   tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>,
+   tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>,
+   tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>,
+   tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>,
+   tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>,
+   tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>,
+   tensor<1x32x40x128xf32>, tensor<1x32x40x128xf32>, tensor<1x40x4096xf32>
+  */
+  std::variant<MemRef<float, 3>, MemRef<float, 4>> resultContainer[66] = {
       MemRef<float, 3>({1, MaxTokenLength, MaxVocabSize}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
+      MemRef<float, 4>({1, 32, MaxTokenLength, 128}, false, 0),
       MemRef<float, 3>({1, MaxTokenLength, HiddenSize}, false, 0)};
   Text<size_t, 2> inputContainer(inputStr);
   MemRef<float, 1> paramsContainer({ParamsSize});
@@ -161,7 +248,8 @@ int main() {
     // Determine the generated token.
     int tokenIndex = inputContainer.getTokenCnt() - 1;
     const float *startPtr =
-        resultContainer[0].getData() + tokenIndex * MaxVocabSize;
+        std::get<MemRef<float, 3>>(resultContainer[0]).getData() +
+        tokenIndex * MaxVocabSize;
     const float *endPtr = startPtr + MaxVocabSize;
     int maxIndex = findMaxIndex(startPtr, endPtr);
     std::string tok = inputContainer.getStr(maxIndex);
@@ -176,8 +264,17 @@ int main() {
     // Append the generated token into the input and output container.
     inputContainer.appendTokenIdx(maxIndex);
     outputContainer.appendTokenIdx(maxIndex);
-    free(resultContainer[0].release());
-    free(resultContainer[1].release());
+
+    std::cerr << std::get<MemRef<float, 4>>(resultContainer[1]).getData()[0] << std::endl;
+    free(std::get<MemRef<float, 3>>(resultContainer[0]).release());
+    // for (int memref_idx = 1; memref_idx < 65; memref_idx++) {
+      // std::cerr << "here" << memref_idx + 1 << std::endl;
+      // std::cerr << std::get<MemRef<float, 4>>(resultContainer[memref_idx]).getData()[0] << std::endl;
+      // free(std::get<MemRef<float, 4>>(resultContainer[memref_idx]).release());
+    // }
+    free(std::get<MemRef<float, 3>>(resultContainer[65]).release());
+
+    std::cerr << "here end" << std::endl;
   }
 
   /// Print the final result
