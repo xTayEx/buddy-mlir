@@ -20,6 +20,7 @@
 
 import os
 import time
+from pathlib import Path
 
 import numpy
 import torch
@@ -28,19 +29,24 @@ from torch._functorch.aot_autograd import aot_autograd_decompositions
 
 from buddy.compiler.frontend import DynamoCompiler
 from buddy.compiler.ops import tosa
+from buddy.utils.model import Transformer
 
 
 # Retrieve the LLaMA model path from environment variables.
-model_path = os.environ.get("LLAMA_MODEL_PATH")
-if model_path is None:
+model_path_env = os.environ.get("LLAMA_MODEL_PATH")
+if model_path_env is None:
     raise EnvironmentError(
         "The environment variable 'LLAMA_MODEL_PATH' is not set or is invalid."
     )
 
+model_path = Path(model_path_env)
+
 # Initialize the tokenizer and model from the specified model path.
-tokenizer = LlamaTokenizer.from_pretrained(model_path)
-model = LlamaForCausalLM.from_pretrained(model_path, torchscript=True)
-model.config.use_cache = True
+print(f"load model from name: {model_path.name}")
+model = Transformer.from_name(model_path.name)
+checkpoint = torch.load(str(model_path / "model.pth"), mmap=True, weights_only=True)
+model.load_state_dict(checkpoint, assign=True)
+print(model)
 
 # Initialize Dynamo Compiler with specific configurations as an importer.
 dynamo_compiler = DynamoCompiler(
@@ -50,7 +56,7 @@ dynamo_compiler = DynamoCompiler(
 
 # Import the model into MLIR module and parameters.
 with torch.no_grad():
-    data = torch.tensor([[1 for i in range(40)]], dtype=torch.int64)
+    data = torch.tensor([[1 for _ in range(40)]], dtype=torch.int64)
     graphs = dynamo_compiler.importer(model, data)
 
 assert len(graphs) == 1
