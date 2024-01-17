@@ -40,27 +40,49 @@ if model_path is None:
 # Initialize the tokenizer and model from the specified model path.
 tokenizer = LlamaTokenizer.from_pretrained(model_path)
 model = LlamaForCausalLM.from_pretrained(model_path, torchscript=True)
-model.config.use_cache = False
+print(type(model))
 
 # Initialize Dynamo Compiler with specific configurations as an importer.
-dynamo_compiler = DynamoCompiler(
+prefill_dynamo_compiler = DynamoCompiler(
     primary_registry=tosa.ops_registry,
     aot_autograd_decomposition=aot_autograd_decompositions,
 )
 
-# Import the model into MLIR module and parameters.
-with torch.no_grad():
-    data = torch.tensor([[1 for i in range(40)]], dtype=torch.int64)
-    graphs = dynamo_compiler.importer(model, data)
+decode_dynamo_compiler = DynamoCompiler(
+    primary_registry=tosa.ops_registry,
+    aot_autograd_decomposition=aot_autograd_decompositions,
+)
 
-assert len(graphs) == 1
-graph = graphs[0]
-params = dynamo_compiler.imported_params[graph]
-graph.lower_to_top_level_ir(True)
+data = torch.tensor([[1 for _ in range(40)]], dtype=torch.int64)
+
+# TODO: we just need the shape of `past_key_values`. So instead of 
+# calling the model, calculate the shape directly is more efficient.
+model_output = model(data, use_cache=True, return_dict=True)
+past_key_values = model_output.past_key_values
+
+with torch.no_grad():
+    prefill_graphs = prefill_dynamo_compiler.importer(model, data)
+    assert len(prefill_graphs) == 1
+    prefill_graph = prefill_graphs[0]
+    prefill_graph.lower_to_top_level_ir(do_params_pack=True)
+
+    decode_graphs = decode_dynamo_compiler.importer(
+        model, data, past_key_values=past_key_values
+    )
+    assert len(decode_graphs) == 1
+    decode_graph = decode_graphs[0]
+    decode_graph.lower_to_top_level_ir(do_params_pack=True)
+
+params = decode_dynamo_compiler.imported_params[decode_graph]
 path_prefix = os.path.dirname(os.path.abspath(__file__))
-# Write the MLIR module to the file.
-with open(os.path.join(path_prefix, "llama.mlir"), "w") as module_file:
-    print(graph._imported_module, file=module_file)
+
+# Write prefill and decode modules to files.
+with open(os.path.join(path_prefix, "llama_prefill.mlir"), "w") as prefill_module_file:
+    prefill_module_file.write(str(prefill_graph._imported_module))
+
+with open(os.path.join(path_prefix, "llama_decode.mlir"), "w") as decode_module_file:
+    decode_module_file.write(str(decode_graph._imported_module))
+
 
 # Concatenate all parameters into a single numpy array and write to a file.
 all_param = numpy.concatenate(

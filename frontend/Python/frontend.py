@@ -127,6 +127,7 @@ class DynamoCompiler:
             "select.int": SelectOp,
             "exp.default": ExpOp,
             "erf.default": ErfOp,
+            "zeros.default": ZerosOp,
             "getitem": GetItemOp,
         }
 
@@ -161,7 +162,9 @@ class DynamoCompiler:
         node_kwargs: Optional[Dict] = None,
     ):
         # TODO: Add docstring.
-        op_class = self._ops_map.get(gm_node_name)
+        # use subscript instead of dict.get for raising KeyError if 
+        # there is no expected operator.
+        op_class = self._ops_map[gm_node_name]
         buddy_node = op_class()
         buddy_node._name = node_name
         if gm_node_name == "output":

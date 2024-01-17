@@ -349,3 +349,8 @@ class ErfOp(Op):
     def __init__(self) -> None:
         super().__init__()
         self._op_type = OpType.ElementwiseType
+
+class ZerosOp(Op):
+    def __init__(self) -> None:
+        super().__init__()
+        self._op_type = OpType.PlaceholderType

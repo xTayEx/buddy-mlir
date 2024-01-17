@@ -18,7 +18,7 @@
 #
 # ===---------------------------------------------------------------------------
 
-# TODO: Do not rely on torch. 
+# TODO: Do not rely on torch.
 import torch
 import array
 from typing import Dict, List, Tuple, Union
@@ -50,6 +50,7 @@ from ..graph import (
     SumDimOp,
     TOp,
     TransposeOp,
+    ZerosOp,
 )
 
 
@@ -920,6 +921,15 @@ def transpose_op(node: TransposeOp, symbol_table):
     return op
 
 
+def zeros_op(node: ZerosOp, symbol_table):
+    output_shape = list(node.args[0])
+    attr = ir.DenseElementsAttr.get_splat(
+        ir.RankedTensorType.get(list(output_shape), ir.F32Type.get()),
+        ir.FloatAttr.get(ir.F32Type.get(), 0.0),
+    )
+    return tosa.ConstOp(attr)
+
+
 ops_registry = {
     "AddOp": add_op,
     "MulOp": mul_op,
@@ -945,4 +955,5 @@ ops_registry = {
     "UnsqueezeOp": unsqueeze_op,
     "TOp": t_op,
     "TransposeOp": transpose_op,
+    "ZerosOp": zeros_op,
 }

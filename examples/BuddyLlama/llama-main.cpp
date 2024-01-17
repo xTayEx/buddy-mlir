@@ -267,11 +267,11 @@ int main() {
 
     std::cerr << std::get<MemRef<float, 4>>(resultContainer[1]).getData()[0] << std::endl;
     free(std::get<MemRef<float, 3>>(resultContainer[0]).release());
-    // for (int memref_idx = 1; memref_idx < 65; memref_idx++) {
-      // std::cerr << "here" << memref_idx + 1 << std::endl;
-      // std::cerr << std::get<MemRef<float, 4>>(resultContainer[memref_idx]).getData()[0] << std::endl;
+    for (int memref_idx = 1; memref_idx < 65; memref_idx++) {
+      std::cerr << "here" << memref_idx + 1 << std::endl;
+      std::cerr << std::get<MemRef<float, 4>>(resultContainer[memref_idx]).getData()[0] << std::endl;
       // free(std::get<MemRef<float, 4>>(resultContainer[memref_idx]).release());
-    // }
+    }
     free(std::get<MemRef<float, 3>>(resultContainer[65]).release());
 
     std::cerr << "here end" << std::endl;
