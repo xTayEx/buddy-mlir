@@ -50,7 +50,7 @@ dynamo_compiler = DynamoCompiler(
 
 # Import the model into MLIR module and parameters.
 with torch.no_grad():
-    data = torch.tensor([[1 for i in range(40)]], dtype=torch.int64)
+    data = torch.tensor([[1 for i in range(20)]], dtype=torch.int64)
     graphs = dynamo_compiler.importer(model, data)
 
 assert len(graphs) == 1
