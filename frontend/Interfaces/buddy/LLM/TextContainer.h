@@ -91,6 +91,7 @@ public:
   }
   // Append token index.
   void appendTokenIdx(size_t idx) {
+    std::cout << "in appendTokenIdx, idx is " << idx << std::endl;
     if (tokenCnt >= this->getSize()) {
       resize();
     }
@@ -332,7 +333,9 @@ template <typename T, size_t N> std::string Text<T, N>::revertLlama() {
     if (id == SEP_ID)
       break;
     // Replace each "▁" with a space.
+    std::cout << "id is " << id << std::endl;
     std::string token = this->idToTokenVec[id];
+    std::cout << "token is " << token << std::endl;
     size_t pos = token.find("▁");
     while (pos != std::string::npos) {
       token.replace(pos, 3, " ");

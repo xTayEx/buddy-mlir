@@ -64,6 +64,9 @@ SET_TARGET_PROPERTIES(
 add_executable(buddy-llama-run llama-main.cpp)
 target_link_directories(buddy-llama-run PRIVATE ${LLVM_MLIR_LIBRARY_DIR})
 
+add_executable(test-text-container test_text_container.cpp)
+target_link_directories(test-text-container PRIVATE ${LLVM_MLIR_LIBRARY_DIR})
+
 set(BUDDY_LLAMA_LIBS
   LLAMA
   mlir_c_runner_utils
@@ -74,3 +77,4 @@ if(BUDDY_MLIR_USE_MIMALLOC)
 endif()
 
 target_link_libraries(buddy-llama-run ${BUDDY_LLAMA_LIBS})
+target_link_libraries(test-text-container ${BUDDY_LLAMA_LIBS})
