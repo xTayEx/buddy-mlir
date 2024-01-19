@@ -323,6 +323,7 @@ class GraphImporter:
             def generated_func(*args):
                 args_list = list(args)
                 for node in self._body:
+                    print(node.__dict__)
                     # TODO: raise an error for unsupported ops.
                     # if not (
                     #     node.op in ["output", "placeholder", "call_function"]
