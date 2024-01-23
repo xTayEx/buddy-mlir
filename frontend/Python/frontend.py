@@ -143,7 +143,9 @@ class DynamoCompiler:
             "iota.default": IotaOp,
             "sigmoid.default": SigmoidOp,
             "scalar_tensor.default": ScalarTensorOp,
-            "where.self": WhereOp
+            "where.self": WhereOp,
+            "sqrt.default": SqrtOp,
+            "reciprocal.default": ReciprocalOp,
         }
 
     @property

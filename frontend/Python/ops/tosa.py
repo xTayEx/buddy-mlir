@@ -55,6 +55,7 @@ from ..graph import (
     ReluOp,
     IotaOp,
     SigmoidOp,
+    ReciprocalOp,
 )
 from .utils import *
 
@@ -218,7 +219,7 @@ def addmm_op(
 def bmm_op(node: BatchMatmulOp, symbol_table) -> ir.Operation:
     """
     Import batch matrix multiplication operation.
-    From buddy graph ir's `BatchMatmulOp` operator to MLIR TOSA `matmul` 
+    From buddy graph ir's `BatchMatmulOp` operator to MLIR TOSA `matmul`
     operation.
     """
     input_ = symbol_table.get((str(node.args[0]), 0))
@@ -538,7 +539,7 @@ def var_mean_op(node: VarMeanOp, symbol_table):
     From buddy graph ir's `VarMeanOp` operator to two MLIR TOSA `mul`
     operation.
 
-    Note: By now, this conversion function follows PyTorch's `var_mean` 
+    Note: By now, this conversion function follows PyTorch's `var_mean`
     semantic.
 
           The conversion procedure can be splited into two steps:
@@ -953,6 +954,7 @@ def maxpool2d_op(node: MaxPool2dOp, symbol_table):
         )
     return op
 
+
 def convolution2d_op(node: Conv2dOp, symbol_table):
     """
     Import the convolution operation.
@@ -1081,6 +1083,7 @@ def convolution2d_op(node: Conv2dOp, symbol_table):
         )
     return op
 
+
 def relu_op(node: ReluOp, symbol_table):
     """
     Import the tensor relu operation.
@@ -1100,6 +1103,7 @@ def relu_op(node: ReluOp, symbol_table):
     op = tosa.MaximumOp(tensor_type, input1, zero_op)
 
     return op
+
 
 def iota_op(node: IotaOp, symbol_table):
     """
@@ -1122,6 +1126,7 @@ def iota_op(node: IotaOp, symbol_table):
 
     return op
 
+
 def sigmoid_op(node: SigmoidOp, symbol_table):
     """
     Import the tensor sigmoid operation.
@@ -1138,6 +1143,12 @@ def sigmoid_op(node: SigmoidOp, symbol_table):
     op = tosa.SigmoidOp(tensor_type, input1)
 
     return op
+
+
+def reciprocal_op(node: ReciprocalOp, symbol_table):
+    input_tensor = symbol_table.get((str(node.args[0]), 0))
+    return tosa.ReciprocalOp(input_tensor.type, input_tensor)
+
 
 ops_registry = {
     "AddOp": add_op,
@@ -1169,4 +1180,5 @@ ops_registry = {
     "ReluOp": relu_op,
     "IotaOp": iota_op,
     "SigmoidOp": sigmoid_op,
+    "ReciprocalOp": reciprocal_op,
 }
