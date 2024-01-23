@@ -19,14 +19,23 @@
 # ===---------------------------------------------------------------------------
 
 from mlir.dialects import math
+from buddy.compiler.graph.operation import ErfOp, SqrtOp
 
 
-def erf_op(node, symbol_table):
+def erf_op(node: ErfOp, symbol_table):
+    """
+    Import the tensor erf operation.
+    From Buddy ErfOp to MLIR TOSA `erf` operation.
+    """
     input_tensor = symbol_table.get((str(node.args[0]), 0))
     op = math.ErfOp(input_tensor)
     return op
 
-def sqrt_op(node, symbol_table):
+def sqrt_op(node: SqrtOp, symbol_table):
+    """
+    Import the tensor sqrt operation.
+    From Buddy SqrtOp to MLIR TOSA `sqrt` operation.
+    """
     input_tensor = symbol_table.get((str(node.args[0]), 0))
     return math.SqrtOp(input_tensor)
 

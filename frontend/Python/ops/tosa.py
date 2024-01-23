@@ -1146,6 +1146,10 @@ def sigmoid_op(node: SigmoidOp, symbol_table):
 
 
 def reciprocal_op(node: ReciprocalOp, symbol_table):
+    """
+    Import the tensor reciprocal operation.
+    From Buddy ReciprocalOp to MLIR TOSA `reciprocal` operation.
+    """
     input_tensor = symbol_table.get((str(node.args[0]), 0))
     return tosa.ReciprocalOp(input_tensor.type, input_tensor)
 
