@@ -437,62 +437,8 @@ def select_op(node: SelectOp, symbol_table):
     return op
 
 
-def slice_op(node: SliceOp, symbol_table):
-    """
-    Import the slice operation.
-    From buddy graph ir's `SliceOp` operator to MLIR TOSA `extract_slice`
-    operation.
-    """
-    input_tensor = symbol_table.get((str(node.args[0]), 0))
-    dim = node.args[1]
-    start_idx = node.args[2]
-    end_idx = node.args[3]
 
-    sizes = ir.RankedTensorType(input_tensor.type).shape
 
-    if start_idx < 0:
-        start_idx += sizes[dim]
-
-    if end_idx < 0:
-        end_idx += sizes[dim]
-
-    if start_idx < 0:
-        start_idx = 0
-    elif start_idx >= sizes[dim]:
-        start_idx = sizes[dim]
-
-    if end_idx < start_idx:
-        end_idx = start_idx
-    elif end_idx >= sizes[dim]:
-        end_idx = sizes[dim]
-
-    new_sizes = [x for x in sizes]
-    new_sizes[dim] = end_idx - start_idx
-    new_sizes_attr = ir._denseI64ArrayAttr(new_sizes, None)
-
-    offsets = [0] * len(sizes)
-    offsets[dim] = start_idx
-    offsets_attr = ir._denseI64ArrayAttr(offsets, None)
-
-    strides = [1] * len(sizes)
-    strides_attr = ir._denseI64ArrayAttr(strides, None)
-
-    result_element_type = ir.RankedTensorType(input_tensor.type).element_type
-    extract_slice_result_type = ir.RankedTensorType.get(
-        new_sizes, result_element_type
-    )
-    op = tensor.ExtractSliceOp(
-        extract_slice_result_type,
-        input_tensor,
-        [],
-        [],
-        [],
-        offsets_attr,
-        new_sizes_attr,
-        strides_attr,
-    )
-
-    return op
 
 
 def convert_element_type_op(node: ConvertElementTypeOp, symbol_table):
@@ -1157,7 +1103,6 @@ ops_registry = {
     "ReshapeOp": reshape_op,
     "ViewOp": reshape_op,
     "SelectOp": select_op,
-    "SliceOp": slice_op,
     "EmbeddingOp": embedding_op,
     "ConvertElementTypeOp": convert_element_type_op,
     "PermuteOp": permute_op,
