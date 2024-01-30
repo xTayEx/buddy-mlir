@@ -959,11 +959,14 @@ def convolution2d_op(node: Conv2dOp, symbol_table):
     From Buddy Conv2dOp to MLIR TOSA `conv2d` operation.
     """
     assert len(node.args) == 9
+    print(str(node.args[0]), str(node.args[1]))
     input1 = symbol_table.get((str(node.args[0]), 0))
     weight = symbol_table.get((str(node.args[1]), 0))
     is_kernel_transposed = node.args[6]
     dtype = node.tensor_meta["dtype"]
     result_element_type = mlir_element_type_get(dtype)
+    print(ir.RankedTensorType(input1.type).shape)
+    print(ir.RankedTensorType(weight.type).shape)
     if node._layout.find("NCHW") != -1:
         perm_list = [0, 2, 3, 1]
         perm_const_op = tosa.ConstOp(
