@@ -24,14 +24,14 @@ dynamo_compiler = DynamoCompiler(
 
 in1 = torch.randn((1, 3, 640, 480))
 
-model_opt = torch.compile(model, backend=dynamo_compiler)
-assert torch.allclose(model_opt(in1), model(in1), equal_nan=True)
-
 graphs = dynamo_compiler.importer(model, in1)
 assert len(graphs) == 1
 graph = graphs[0]
 graph.lower_to_top_level_ir()
 print(graph._imported_module)
+
+model_opt = torch.compile(model, backend=dynamo_compiler)
+assert torch.allclose(model_opt(in1), model(in1), equal_nan=True)
 # CHECK: module {
 # CHECK-LABEL: func.func @forward
 # CHECK: %{{.*}} = "tosa.const"

@@ -18,7 +18,7 @@
 #
 # ===---------------------------------------------------------------------------
 
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple
 
 import mlir.ir as ir
 from mlir.dialects import tosa, linalg, arith, tensor, math
@@ -267,6 +267,7 @@ def ones_op(
     op = arith.ConstantOp(tensor_type, attr)
 
     return op
+
 
 def full_op(
     node: FullOp,
@@ -1810,6 +1811,7 @@ def param_extract(
     axis = ir.ArrayAttr.get([axis], None)
     return tensor.ExpandShapeOp(tensor_type, extract_slice_op.result, axis)
 
+
 def where_op(
     node: WhereOp,
     symbol_table: Dict[Tuple[str, int], ir.Operation],
@@ -1884,6 +1886,7 @@ def where_op(
 
     return op
 
+
 def scalar_tensor_op(node: ScalarTensorOp, symbol_table):
     """
     Import the tensor Scalar_Tensor operation.
@@ -1895,6 +1898,36 @@ def scalar_tensor_op(node: ScalarTensorOp, symbol_table):
     op = arith.ConstantOp(dtype, attr)
 
     return op
+
+
+def slice_scatter_op(node: SliceScatterOp, symbol_table):
+    input_tensor = symbol_table.get((str(node.args[0]), 0))
+    src_tensor = symbol_table.get((str(node.args[1]), 0))
+    dim = node.args[2]
+    start = node.args[3]
+
+    input_tensor_shape = ir.RankedTensorType(input_tensor.type).shape
+    src_tensor_shape = ir.RankedTensorType(src_tensor.type).shape
+    offset = [0] * len(input_tensor_shape)
+    offset[dim] = start
+    static_offset_attr = ir._denseI64ArrayAttr(offset, None)
+    static_sizes_attr = ir._denseI64ArrayAttr(src_tensor_shape, None)
+    stride = [1] * len(input_tensor_shape)
+    if len(node.args) > 5:
+        stride[dim] = node.args[5]
+    static_stride_attr = ir._denseI64ArrayAttr(stride, None)
+
+    return tensor.InsertSliceOp(
+        src_tensor,
+        input_tensor,
+        [],
+        [],
+        [],
+        static_offset_attr,
+        static_sizes_attr,
+        static_stride_attr,
+    )
+
 
 ops_registry = {
     "param.extract": param_extract,
@@ -1929,4 +1962,5 @@ ops_registry = {
     "AddOp": add_op,
     "WhereOp": where_op,
     "ScalarTensorOp": scalar_tensor_op,
+    "SliceScatterOp": slice_scatter_op,
 }

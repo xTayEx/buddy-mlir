@@ -19,8 +19,6 @@ dynamo_compiler = DynamoCompiler(
     aot_autograd_decomposition=inductor_decomp,
 )
 
-foo_mlir = torch.compile(foo, backend=dynamo_compiler)
-assert torch.allclose(foo_mlir(x), foo(x), equal_nan=True)
 
 graphs = dynamo_compiler.importer(foo, x)
 assert len(graphs) == 1
@@ -28,6 +26,8 @@ graph = graphs[0]
 graph.lower_to_top_level_ir()
 print(graph._imported_module)
 
+foo_mlir = torch.compile(foo, backend=dynamo_compiler)
+assert torch.allclose(foo_mlir(x), foo(x), equal_nan=True)
 # CHECK: module {
 # CHECK-LABEL: func.func @forward
 # CHECK: %{{.*}} = math.sqrt

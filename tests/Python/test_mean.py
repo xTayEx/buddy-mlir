@@ -20,16 +20,16 @@ dynamo_compiler = DynamoCompiler(
     aot_autograd_decomposition=inductor_decomp,
 )
 
-foo_mlir = torch.compile(foo, backend=dynamo_compiler)
-assert torch.allclose(
-    foo_mlir(in1, in2, keepdim=in3), foo(in1, in2, keepdim=in3), equal_nan=True
-)
 graphs = dynamo_compiler.importer(foo, in1, in2, in3)
 assert len(graphs) == 1
 graph = graphs[0]
 graph.lower_to_top_level_ir()
 print(graph._imported_module)
 
+foo_mlir = torch.compile(foo, backend=dynamo_compiler)
+assert torch.allclose(
+    foo_mlir(in1, in2, keepdim=in3), foo(in1, in2, keepdim=in3), equal_nan=True
+)
 # CHECK: module {
 # CHECK-LABEL: func.func @forward
 # CHECK: %{{.*}} = tosa.reduce_sum

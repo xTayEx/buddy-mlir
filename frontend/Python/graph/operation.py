@@ -19,9 +19,9 @@
 # ===---------------------------------------------------------------------------
 
 from enum import Enum
-from typing import Dict, Optional, List, Tuple
+from typing import List
 
-from .type import TensorDType, TensorMeta
+from .type import TensorMeta
 
 
 class OpType(Enum):
@@ -54,6 +54,7 @@ class OpType(Enum):
     ConcatType = 4
     PlaceholderType = 5
     GetItemType = 6
+    MutationType = 7
 
 
 class Op:
@@ -454,3 +455,27 @@ class SqrtOp(Op):
     def __init__(self) -> None:
         super().__init__()
         self._op_type = OpType.ElementwiseType
+
+
+class LogicalNotOp(Op):
+    def __init__(self) -> None:
+        super().__init__()
+        self._op_type = OpType.ElementwiseType
+
+
+class SliceScatterOp(Op):
+    def __init__(self) -> None:
+        super().__init__()
+        self._op_type = OpType.MutationType
+        
+
+class IndexPutOp(Op):
+    def __init__(self) -> None:
+        super().__init__()
+        self._op_type = OpType.MutationType
+        
+
+class SplitWithSizesOp(Op):
+    def __init__(self) -> None:
+        super().__init__()
+        self._op_type = OpType.ReshapeType

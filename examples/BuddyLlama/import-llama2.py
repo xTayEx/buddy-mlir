@@ -20,7 +20,7 @@
 
 import os
 from pathlib import Path
-from typing import Optional, List
+from typing import List
 
 import torch
 from torch._inductor.decomposition import decompositions as inductor_decomp
@@ -35,7 +35,16 @@ def my_compiler(gm: torch.fx.GraphModule, example_inputs: List[torch.Tensor]):
     def _compiler(
         _gm: torch.fx.GraphModule, _example_inputs: List[torch.Tensor]
     ):
+        # ops_set = set()
         _gm.graph.print_tabular()
+        # for node in _gm.graph.nodes:
+        #     try:
+        #         ops_set.add(node.target.__name__)
+        #     except AttributeError:
+        #         pass
+
+        # for op in ops_set:
+        #     print(op)
         return _gm.forward
 
     return aot_module_simplified(
@@ -46,43 +55,16 @@ def my_compiler(gm: torch.fx.GraphModule, example_inputs: List[torch.Tensor]):
     )  # return a python callable
 
 
-def multinomial_sample_one_no_sync(
-    probs_sort,
-):  # Does multinomial sampling without a cuda synchronization
-    q = torch.empty_like(probs_sort).exponential_(1)
-    return torch.argmax(probs_sort / q, dim=-1, keepdim=True).to(
-        dtype=torch.int
-    )
-
-
-def logits_to_probs(
-    logits, temperature: float = 1.0, top_k: Optional[int] = None
-):
-    logits = logits / max(temperature, 1e-5)
-
-    if top_k is not None:
-        v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
-        pivot = v.select(-1, -1).unsqueeze(-1)
-        logits = torch.where(logits < pivot, -float("Inf"), logits)
-    probs = torch.nn.functional.softmax(logits, dim=-1)
-    return probs
-
-
-def sample(logits, temperature: float = 1.0, top_k: Optional[int] = None):
-    probs = logits_to_probs(logits[0, -1], temperature, top_k)
-    idx_next = multinomial_sample_one_no_sync(probs)
-    return idx_next, probs
-
-
 def prefill(
     model_: Transformer,
     x: torch.Tensor,
     input_pos_: torch.Tensor,
-    **sampling_kwargs
+    **sampling_kwargs,
 ) -> torch.Tensor:
     # input_pos: [B, S]
     logits = model_(x, input_pos_)
-    return sample(logits, **sampling_kwargs)[0]
+    # return sample(logits, **sampling_kwargs)[0]
+    return logits
 
 
 MAX_NEW_TOKENS = 40

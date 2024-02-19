@@ -18,7 +18,7 @@
 #
 # ===---------------------------------------------------------------------------
 
-from typing import Any, List, Optional
+from typing import List, Dict
 from types import FunctionType
 import ctypes
 import functools

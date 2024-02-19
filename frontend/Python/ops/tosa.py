@@ -57,6 +57,9 @@ from ..graph import (
     SigmoidOp,
     ReciprocalOp,
     MeanOp,
+    LogicalNotOp,
+    IndexPutOp,
+    SplitWithSizesOp,
 )
 from .utils import *
 
@@ -220,7 +223,7 @@ def addmm_op(
 def bmm_op(node: BatchMatmulOp, symbol_table) -> ir.Operation:
     """
     Import batch matrix multiplication operation.
-    From buddy graph ir's `BatchMatmulOp` operator to MLIR TOSA `matmul` 
+    From buddy graph ir's `BatchMatmulOp` operator to MLIR TOSA `matmul`
     operation.
     """
     input_ = symbol_table.get((str(node.args[0]), 0))
@@ -452,6 +455,7 @@ def slice_op(node: SliceOp, symbol_table):
     dim = node.args[1]
     start_idx = node.args[2]
     end_idx = node.args[3]
+    print(dim, start_idx, end_idx)
 
     sizes = ir.RankedTensorType(input_tensor.type).shape
 
@@ -1009,10 +1013,8 @@ def convolution2d_op(node: Conv2dOp, symbol_table):
             permute_result_type, weight, perm_const_op.results[0]
         ).result
     if is_kernel_transposed:
-        in_channels = list(ir.RankedTensorType(weight.type).shape)[0]
         out_channels = list(ir.RankedTensorType(weight.type).shape)[1]
     else:
-        in_channels = list(ir.RankedTensorType(weight.type).shape)[1]
         out_channels = list(ir.RankedTensorType(weight.type).shape)[0]
     if len(node._parents) == 2:
         new_size_tensor_type = ir.RankedTensorType.get(
@@ -1025,7 +1027,7 @@ def convolution2d_op(node: Conv2dOp, symbol_table):
         bias_tensor = tosa.ConstOp(new_size_attr).results[0]
     else:
         bias_tensor = symbol_table.get((str(node.args[2]), 0))
-    assert input1 != None and weight != None and bias_tensor != None
+    assert input1 is not None and weight is not None and bias_tensor is not None
     stride = node.args[3]
     input_padding = node.args[4]
     if len(input_padding) == 1:
@@ -1044,7 +1046,7 @@ def convolution2d_op(node: Conv2dOp, symbol_table):
         out_shape = perm_shape
     output = ir.RankedTensorType.get(out_shape, result_element_type)
     stride_attr = ir._denseI64ArrayAttr(stride, None)
-    assert groups == 1, 'tosa.conv2d only support one group'
+    assert groups == 1, "tosa.conv2d only support one group"
     if is_kernel_transposed:
         if sum(input_padding) > 0 or sum(dilation) > len(dilation):
             raise NotImplementedError
@@ -1108,7 +1110,6 @@ def relu_op(node: ReluOp, symbol_table):
     tensor_type = ir.RankedTensorType.get(output_shape, element.type)
     attr = ir.DenseElementsAttr.get_splat(tensor_type, element)
     zero_op = tosa.ConstOp(attr)
-    result_element_type = mlir_element_type_get(dtype)
     op = tosa.MaximumOp(tensor_type, input1, zero_op)
 
     return op
@@ -1210,6 +1211,49 @@ def mean_op(node: MeanOp, symbol_table):
     return ret
 
 
+def logical_not_op(node: LogicalNotOp, symbol_table):
+    input_tensor = symbol_table.get((str(node.args[0]), 0))
+    return tosa.LogicalNotOp(input_tensor.type, input_tensor)
+
+
+def split_with_sizes_op(node: SplitWithSizesOp, symbol_table):
+    input_tensor = symbol_table.get((str(node.args[0]), 0))
+    split_sizes = node.args[1]
+    original_sizes = ir.RankedTensorType(input_tensor.type).shape
+    if len(node.args) > 2:
+        dim = node.args[2]
+    else:
+        dim = 0
+    if dim < 0:
+        dim += len(original_sizes)
+
+    slices = tuple()
+    start_index = 0
+    for split_size_item in split_sizes:
+        start = [0] * len(ir.RankedTensorType(input_tensor.type).shape)
+        start[dim] = start_index
+        start_index += split_size_item
+        start_attr = ir._denseI64ArrayAttr(start, None)
+
+        new_sizes = original_sizes[:dim] + [split_size_item] + original_sizes[dim + 1 :]
+        # print(new_sizes)
+        new_sizes_attr = ir._denseI64ArrayAttr(new_sizes, None)
+
+        result_element_type = ir.RankedTensorType(
+            input_tensor.type
+        ).element_type
+        output_type = ir.RankedTensorType.get(new_sizes, result_element_type)
+        slices += (
+            tosa.SliceOp(output_type, input_tensor, start_attr, new_sizes_attr),
+        )
+        
+    return slices
+
+
+def index_put_op(node: IndexPutOp, symbol_table):
+    pass
+
+
 ops_registry = {
     "AddOp": add_op,
     "MulOp": mul_op,
@@ -1242,4 +1286,7 @@ ops_registry = {
     "SigmoidOp": sigmoid_op,
     "ReciprocalOp": reciprocal_op,
     "MeanOp": mean_op,
+    "LogicalNotOp": logical_not_op,
+    "IndexPutOp": index_put_op,
+    "SplitWithSizesOp": split_with_sizes_op,
 }
