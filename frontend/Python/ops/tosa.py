@@ -58,7 +58,6 @@ from ..graph import (
     ReciprocalOp,
     MeanOp,
     LogicalNotOp,
-    IndexPutOp,
     SplitWithSizesOp,
 )
 from .utils import *
@@ -114,7 +113,7 @@ def _scalar_to_tensor(
     scalar: Union[float, int], element_type: ir.Type, shape: List[int]
 ):
     """Convert scalers to cooresponding tensors since MLIR
-    doesn't support operation between scalers and tensors."""
+    doesn't support operation between scalars and tensors."""
     element = (
         ir.FloatAttr.get(element_type, float(scalar))
         if str(element_type) == "f32"
@@ -1248,10 +1247,6 @@ def split_with_sizes_op(node: SplitWithSizesOp, symbol_table):
     return slices
 
 
-def index_put_op(node: IndexPutOp, symbol_table):
-    pass
-
-
 ops_registry = {
     "AddOp": add_op,
     "MulOp": mul_op,
@@ -1285,6 +1280,5 @@ ops_registry = {
     "ReciprocalOp": reciprocal_op,
     "MeanOp": mean_op,
     "LogicalNotOp": logical_not_op,
-    "IndexPutOp": index_put_op,
     "SplitWithSizesOp": split_with_sizes_op,
 }

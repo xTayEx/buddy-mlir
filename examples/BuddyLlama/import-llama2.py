@@ -103,18 +103,18 @@ seq = empty
 input_pos = torch.arange(0, T, dtype=torch.int64)
 
 with torch.no_grad():
-    prefill_opt = torch.compile(prefill, backend=my_compiler)
-    prefill_opt(
-        model, prompt.view(1, -1), input_pos, temperature=1.0, top_k=None
-    )
-    # graphs = dynamo_compiler.importer(
-    #     prefill,
-    #     model,
-    #     prompt.view(1, -1),
-    #     input_pos,
-    #     temperature=1.0,
-    #     top_k=None,
+    # prefill_opt = torch.compile(prefill, backend=my_compiler)
+    # prefill_opt(
+    #     model, prompt.view(1, -1), input_pos, temperature=1.0, top_k=None
     # )
+    graphs = dynamo_compiler.importer(
+        prefill,
+        model,
+        prompt.view(1, -1),
+        input_pos,
+        temperature=1.0,
+        top_k=None,
+    )
     # print(len(graphs))
     # graphs[0].lower_to_top_level_ir(do_params_pack=True)
     # print(graphs[0]._imported_module)

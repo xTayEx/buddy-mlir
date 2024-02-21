@@ -1927,6 +1927,14 @@ def slice_scatter_op(node: SliceScatterOp, symbol_table):
         static_sizes_attr,
         static_stride_attr,
     )
+    
+
+def index_put_op(node: IndexPutOp, symbol_table):
+    dest = symbol_table.get((str(node.args[0]), 0))
+    index = node.args[1]
+    value = symbol_table.get((str(node.args[2]), 0))
+    print(ir.RankedTensorType(value.type).shape)
+     
 
 
 ops_registry = {
@@ -1963,4 +1971,5 @@ ops_registry = {
     "WhereOp": where_op,
     "ScalarTensorOp": scalar_tensor_op,
     "SliceScatterOp": slice_scatter_op,
+    "IndexPutOp": index_put_op,
 }
