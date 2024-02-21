@@ -317,7 +317,18 @@ class DynamoCompiler:
                 else:
                     tensor_meta = gm_node.meta.get("tensor_meta")
                     val = gm_node.meta.get("val")
-                    num_returns = len(val)
+
+                    return_info = gm_node.target._schema.returns
+                    has_list_return = False
+                    for return_ in return_info:
+                        if isinstance(return_.type, torch.ListType):
+                            has_list_return = True
+                            break
+
+                    num_returns = (
+                        len(val) if has_list_return else len(return_info)
+                    )
+
                     if num_returns == 1:
                         node_dtype = self._torch_dtype_translate(
                             str(tensor_meta.dtype)

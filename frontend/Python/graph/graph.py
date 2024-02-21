@@ -71,7 +71,7 @@ def make_output_memref_descriptor(ranks, dtypes):
 class Graph:
     """
     Graph is a graph-level expression for the Buddy Compiler frontends.
-    It acts as a model compute graph, which converts a Graph into an equivalent 
+    It acts as a model compute graph, which converts a Graph into an equivalent
     MLIR module.
 
     Attributes:
@@ -239,7 +239,7 @@ class Graph:
             pm.add("eliminate-empty-tensors")
             pm.add("empty-tensor-to-alloc-tensor")
             pm.add("convert-elementwise-to-linalg")
-            pm.add('one-shot-bufferize')
+            pm.add("one-shot-bufferize")
             pm.add("func.func(convert-linalg-to-affine-loops)")
             pm.add("affine-loop-fusion")
             pm.add("func.func(affine-parallelize)")
@@ -428,7 +428,7 @@ class GraphImporter:
         Imports a placeholder node from the Buddy graph.
 
         Parameters:
-        - node (PlaceholderOp): The PlaceholderOp node representing the 
+        - node (PlaceholderOp): The PlaceholderOp node representing the
         placeholder.
         - args_list (List[mlir.ir.BlockArgument]): List of input memrefs.
 

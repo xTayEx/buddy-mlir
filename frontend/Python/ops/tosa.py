@@ -455,7 +455,6 @@ def slice_op(node: SliceOp, symbol_table):
     dim = node.args[1]
     start_idx = node.args[2]
     end_idx = node.args[3]
-    print(dim, start_idx, end_idx)
 
     sizes = ir.RankedTensorType(input_tensor.type).shape
 
@@ -1236,7 +1235,6 @@ def split_with_sizes_op(node: SplitWithSizesOp, symbol_table):
         start_attr = ir._denseI64ArrayAttr(start, None)
 
         new_sizes = original_sizes[:dim] + [split_size_item] + original_sizes[dim + 1 :]
-        # print(new_sizes)
         new_sizes_attr = ir._denseI64ArrayAttr(new_sizes, None)
 
         result_element_type = ir.RankedTensorType(
