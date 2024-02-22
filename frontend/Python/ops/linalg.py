@@ -1205,61 +1205,126 @@ def index_op(
     Returns:
         op: The operation return the linalg.generic op.
     """
+    # Limitation: current implementation doesn't support advanced
+    # indexing with multi-dimensional tensor(s).
+    # e.g.
+    # >>> t = torch.randn((13, 13))
+    # >>> ind = torch.tensor([[1, 2], [1, 2]])
+    # >>> t[[ind]]
     assert len(node.args) == 2
-    input1 = symbol_table.get((str(node.args[0]), 0))
-    if input1 is None:
-        return
-    input1_shape = ir.RankedTensorType(input1.type).shape
-    input2 = node.args[1]
+    to_index_tensor = symbol_table.get((str(node.args[0]), 0))
+    assert to_index_tensor is not None
+    to_index_tensor_shape = ir.RankedTensorType(to_index_tensor.type).shape
+    indices = node.args[1]
     output_shape = list(node.tensor_meta["shape"])
     dtype = node.tensor_meta["dtype"]
     mlir_dtype = mlir_element_type_get(dtype)
-    if len(input2) < len(input1_shape):
-        tensor_type = ir.RankedTensorType.get(output_shape, mlir_dtype)
-        output = tensor.EmptyOp(output_shape, mlir_dtype)
-        loops = ir.RankedTensorType(
-            symbol_table.get((str(input2[0]), 0)).type
-        ).shape
-        generic_map = ir.AffineMap.get_permutation(
-            [i for i in range(len(output_shape))]
-        )
-        input_map = [
-            ir.AffineMapAttr.get(
-                generic_map.get_submap([j for j in range(len(loops))])
+    assert len(indices) <= len(to_index_tensor_shape)
+
+    # Step 1: find offset of the non-none arguments and none arguments.
+    none_index_tensor_offset = []
+    non_none_index_tensor_offset = []
+    for i, tensor_extract_indices in enumerate(indices):
+        if tensor_extract_indices is None:
+            none_index_tensor_offset.append(i)
+        else:
+            non_none_index_tensor_offset.append(i)
+
+    # Omit None argument since inductor decomp will help to decompose
+    # index op with None argument to trivial index op and several
+    # unsqueese ops.
+    indices = [index for index in indices if index is not None]
+
+    tensor_type = ir.RankedTensorType.get(output_shape, mlir_dtype)
+    output = tensor.EmptyOp(output_shape, mlir_dtype)
+    indexing_tensor_shape = ir.RankedTensorType(
+        symbol_table.get((str(indices[0]), 0)).type
+    ).shape
+
+    indexing_tensors = [symbol_table.get((str(ind), 0)) for ind in indices]
+    # Due to linalg.generic's shape verification logic, we need to reshape
+    # the indexing tensor on none-dim. Refer
+    # https://github.com/llvm/llvm-project/blob/b47f63d3c8fedf7c98b7f58e892e784fddee4601/mlir/lib/Dialect/Linalg/IR/LinalgInterfaces.cpp#L1132
+    # for more details.
+    for dim in range(
+        min(len(to_index_tensor_shape), len(node.args[1]))
+    ):
+        if dim not in none_index_tensor_offset:
+            continue
+
+        indexing_tensor_shape.insert(dim, 1)
+        for i, ind_tensor in enumerate(indexing_tensors):
+            ind_tensor_shape = ir.RankedTensorType(ind_tensor.type).shape
+            ind_tensor_shape.insert(dim, 1)
+            reshape_op = tosa.ReshapeOp(
+                ind_tensor,
+                ir._denseI64ArrayAttr(
+                    numpy.array(ind_tensor_shape, dtype=numpy.int64), None
+                ),
             )
-            for i in range(len(input2))
-        ] + [
-            ir.AffineMapAttr.get(
-                generic_map.get_submap([j for j in range(len(output_shape))])
+            indexing_tensors[i] = reshape_op.output
+
+    # Step 2: prepare affine maps, iterator types and so on.
+    generic_map = ir.AffineMap.get_permutation(
+        [i for i in range(len(output_shape))]
+    )
+
+    # Affine map 1: map for indexing tensor.
+    # Affine map 2: map for output tensor
+    map_ = [
+        ir.AffineMapAttr.get(
+            generic_map.get_submap(
+                [dim for dim in range(len(indexing_tensor_shape))]
             )
-        ]
-        operands = [symbol_table.get((str(i), 0)) for i in input2]
-        op = linalg.GenericOp(
-            [tensor_type],
-            operands,
-            [output],
-            ir.ArrayAttr.get(input_map),
-            ir.ArrayAttr.get(
-                [ir.Attribute.parse("#linalg.iterator_type<parallel>")]
-                * len(output_shape)
-            ),
         )
-        arguments = [
-            ir.RankedTensorType(i.type).element_type for i in operands
-        ] + [ir.RankedTensorType(output.result.type).element_type]
-        block = ir.Block.create_at_start(op.region, arguments)
-        index = []
-        for i in block.arguments[:-1]:
-            indexcast_op = arith.IndexCastOp(ir.IndexType.get(), i)
-            block.append(indexcast_op)
-            index.append(indexcast_op.result)
-        for i in range(len(loops), len(output_shape) - len(input2) + 1):
-            index_op = linalg.IndexOp(ir._i64Attr(i, None))
+        for _ in range(len(indices))
+    ] + [
+        ir.AffineMapAttr.get(
+            generic_map.get_submap([dim for dim in range(len(output_shape))])
+        )
+    ]
+
+    op = linalg.GenericOp(
+        [tensor_type],
+        indexing_tensors,
+        [output],
+        ir.ArrayAttr.get(map_),
+        ir.ArrayAttr.get(
+            [ir.Attribute.parse("#linalg.iterator_type<parallel>")]
+            * len(output_shape)
+        ),
+    )
+    arguments = [
+        ir.RankedTensorType(operand.type).element_type
+        for operand in indexing_tensors
+    ] + [ir.RankedTensorType(output.result.type).element_type]
+    block = ir.Block.create_at_start(op.region, arguments)
+
+    tensor_extract_indices = []
+
+    block_argument_list = list(block.arguments[:-1])
+    for dim in range(len(to_index_tensor_shape)):
+        if dim in none_index_tensor_offset or len(block_argument_list) == 0:
+            # Step 4: Extract index value for the dims with none arguments.
+            # None arguments means to extract all the values in the dim.
+            # Also, handle dims that are not operated by the index op in
+            # current context.
+            index_op = linalg.IndexOp(ir._i64Attr(dim, None))
             block.append(index_op)
-            index.append(index_op.result)
-        value = tensor.ExtractOp(input1, index)
-        block.append(value)
-        block.append(linalg.YieldOp([value.result]))
+            tensor_extract_indices.append(index_op.result)
+
+        else:
+            # Step 5: Extract index value for the dims with non-none arguments.
+            indexcast_op = arith.IndexCastOp(
+                ir.IndexType.get(), block_argument_list.pop(0)
+            )
+            block.append(indexcast_op)
+            tensor_extract_indices.append(indexcast_op.result)
+
+    # Step 6: use `tensor.extract` to extract the result tensor.
+    value = tensor.ExtractOp(to_index_tensor, tensor_extract_indices)
+    block.append(value)
+    block.append(linalg.YieldOp([value.result]))
 
     return op
 
@@ -1927,14 +1992,13 @@ def slice_scatter_op(node: SliceScatterOp, symbol_table):
         static_sizes_attr,
         static_stride_attr,
     )
-    
+
 
 def index_put_op(node: IndexPutOp, symbol_table):
     dest = symbol_table.get((str(node.args[0]), 0))
     index = node.args[1]
     value = symbol_table.get((str(node.args[2]), 0))
     print(ir.RankedTensorType(value.type).shape)
-     
 
 
 ops_registry = {

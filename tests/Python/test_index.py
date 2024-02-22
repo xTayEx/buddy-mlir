@@ -1,31 +1,37 @@
 # RUN: %PYTHON %s 2>&1 | FileCheck %s
 
 import torch
-import torch._dynamo as dynamo
 from torch._inductor.decomposition import decompositions as inductor_decomp
-from torch._functorch.aot_autograd import aot_autograd_decompositions
 
 from buddy.compiler.frontend import DynamoCompiler
 from buddy.compiler.ops import linalg
 
 
 def foo(x, y):
-    return x[[y]]
+    return x[[None, None, y]]
 
 
-in1 = torch.ones([13, 13], dtype=torch.float32)
-in2 = torch.tensor([1])
+in1 = torch.arange(25).reshape([5, 5])
+in2 = torch.tensor([1, 2])
 # Initialize the dynamo compiler.
-dynamo_compiler = DynamoCompiler(
+dynamo_compiler_for_test1 = DynamoCompiler(
     primary_registry=linalg.ops_registry,
-    aot_autograd_decomposition=aot_autograd_decompositions,
+    aot_autograd_decomposition=inductor_decomp,
 )
 
-graphs = dynamo_compiler.importer(foo, in1, in2)
+graphs = dynamo_compiler_for_test1.importer(foo, in1, in2)
 assert len(graphs) == 1
 graph = graphs[0]
 graph.lower_to_top_level_ir()
 print(graph._imported_module)
+
+dynamo_compiler_for_test2 = DynamoCompiler(
+    primary_registry=linalg.ops_registry,
+    aot_autograd_decomposition=inductor_decomp,
+)
+
+foo_mlir = torch.compile(foo, backend=dynamo_compiler_for_test2)
+assert torch.equal(foo(in1, in2), foo_mlir(in1, in2))
 
 # CHECK: module {
 # CHECK-LABEL: func.func @forward
