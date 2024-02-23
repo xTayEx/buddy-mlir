@@ -1246,9 +1246,7 @@ def index_op(
     # the indexing tensor on none-dim. Refer
     # https://github.com/llvm/llvm-project/blob/b47f63d3c8fedf7c98b7f58e892e784fddee4601/mlir/lib/Dialect/Linalg/IR/LinalgInterfaces.cpp#L1132
     # for more details.
-    for dim in range(
-        min(len(to_index_tensor_shape), len(node.args[1]))
-    ):
+    for dim in range(min(len(to_index_tensor_shape), len(node.args[1]))):
         if dim not in none_index_tensor_offset:
             continue
 
@@ -1256,13 +1254,34 @@ def index_op(
         for i, ind_tensor in enumerate(indexing_tensors):
             ind_tensor_shape = ir.RankedTensorType(ind_tensor.type).shape
             ind_tensor_shape.insert(dim, 1)
-            reshape_op = tosa.ReshapeOp(
+            reshape_result = tosa.ReshapeOp(
                 ind_tensor,
                 ir._denseI64ArrayAttr(
                     numpy.array(ind_tensor_shape, dtype=numpy.int64), None
                 ),
-            )
-            indexing_tensors[i] = reshape_op.output
+            ).output
+            if to_index_tensor_shape[dim] != 1:
+                repeat_result_shape = ind_tensor_shape.copy()
+                repeat_result_shape[dim] = to_index_tensor_shape[dim]
+                const_op_element_type = ir.RankedTensorType(
+                    ind_tensor.type
+                ).element_type
+                const = tosa.ConstOp(
+                    ir.DenseElementsAttr.get_splat(
+                        ir.RankedTensorType.get(
+                            repeat_result_shape, const_op_element_type
+                        ),
+                        ir.IntegerAttr.get(const_op_element_type, 0),
+                    )
+                ).output
+                broadcast_result_type = ir.RankedTensorType.get(
+                    repeat_result_shape, const_op_element_type
+                )
+                reshape_result = tosa.AddOp(
+                    broadcast_result_type, const, reshape_result
+                ).output
+
+            indexing_tensors[i] = reshape_result
 
     # Step 2: prepare affine maps, iterator types and so on.
     generic_map = ir.AffineMap.get_permutation(
@@ -1608,7 +1627,7 @@ def softmax_op(
         op: The operation return the linalg.generic op.
     """
     assert len(node.args) == 3
-    assert node.args[2] == False
+    assert node.args[2] is False
     input1 = symbol_table.get((str(node.args[0]), 0))
     dim = int(node.args[1])
     if input1 is None:
@@ -1618,15 +1637,7 @@ def softmax_op(
     if dim < 0:
         dim += len(output_shape)
     mlir_dtype = mlir_element_type_get(dtype)
-    # tensor_type = ir.RankedTensorType.get(output_shape, mlir_dtype)
-    # output = tensor.EmptyOp(output_shape, mlir_dtype)
-    # op = linalg.softmax(
-    #     [tensor_type],
-    #     input1,
-    #     output,
-    #     ir.IntegerAttr.get(ir.IntegerType.get_signless(64), dim),
-    # )
-    # print(op, flush=True)
+
     sum_tensor_shape = copy.deepcopy(output_shape)
     sum_tensor_shape[dim] = 1
     sum_tensor_type = ir.RankedTensorType.get(sum_tensor_shape, mlir_dtype)
@@ -1997,8 +2008,16 @@ def slice_scatter_op(node: SliceScatterOp, symbol_table):
 def index_put_op(node: IndexPutOp, symbol_table):
     dest = symbol_table.get((str(node.args[0]), 0))
     index = node.args[1]
+    print(index)
+    for i in index:
+        if i is None:
+            print("None")
+        else:
+            print(ir.RankedTensorType(symbol_table.get((str(i), 0)).type).shape)
+
     value = symbol_table.get((str(node.args[2]), 0))
-    print(ir.RankedTensorType(value.type).shape)
+    print("dest shape", ir.RankedTensorType(dest.type).shape)
+    print("value shape", ir.RankedTensorType(value.type).shape)
 
 
 ops_registry = {

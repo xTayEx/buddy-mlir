@@ -8,7 +8,7 @@ from buddy.compiler.ops import linalg
 
 
 def foo(x, y):
-    return x[[None, None, y]]
+    return x[:, y]
 
 
 in1 = torch.arange(25).reshape([5, 5])
@@ -17,6 +17,7 @@ in2 = torch.tensor([1, 2])
 dynamo_compiler_for_test1 = DynamoCompiler(
     primary_registry=linalg.ops_registry,
     aot_autograd_decomposition=inductor_decomp,
+    verbose=True,
 )
 
 graphs = dynamo_compiler_for_test1.importer(foo, in1, in2)
